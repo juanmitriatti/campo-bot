@@ -13,7 +13,7 @@
 // RESPUESTA: la action `complete` del Footer DEBE llevar en su payload
 // `${form.<campo>}` por cada componente. Sin eso el nfm_reply trae solo el
 // flow_token y el submit recibe un formulario vacío (bug de la v1 dark).
-import type { FormDefinition, FormField, FormOption } from './form-definitions.js';
+import { flowDefinition, type FormDefinition, type FormField, type FormOption } from './form-definitions.js';
 
 export const FIXED_GROUP_SLOTS = 5;
 
@@ -105,16 +105,21 @@ const addKey = (group: string, i: number): string => `${group}_add_${i}`;
 const showSlotKey = (group: string, i: number): string => `show_${group}_${i}`;
 const showFieldKey = (field: string): string => `show_${field}`;
 
+const toggleInitKey = (group: string, i: number): string => `${group}_add_${i}_init`;
+
 function slotToggle(f: FormField, i: number, slots: number): Record<string, unknown> {
+  const t = f.toggle!;
+  const number = i + (f.slotOffset ?? 0);
   // Al desmarcar se ocultan también los siguientes.
   const hide: Record<string, boolean> = {};
   for (let n = i; n <= slots; n++) hide[showSlotKey(f.key, n)] = false;
   return {
     type: 'CheckboxGroup', name: addKey(f.key, i), required: false,
-    label: i === 1 ? 'Camiones' : `Camión ${i}`,
+    label: i === 1 ? t.label : `${t.noun} ${number}`,
+    ...(f.prefillable ? { 'init-value': `\${data.${toggleInitKey(f.key, i)}}` } : {}),
     'data-source': [{
       id: CHECKED,
-      title: i === 1 ? 'Cargar camiones' : '➕ Agregar otro camión',
+      title: i === 1 ? t.first : t.next,
       'on-select-action': { name: 'update_data', payload: { [showSlotKey(f.key, i)]: true } },
       'on-unselect-action': { name: 'update_data', payload: hide },
     }],
@@ -139,11 +144,16 @@ function choiceSelector(def: FormDefinition): Record<string, unknown> {
 }
 
 /** Valores de `data` que gobiernan qué se ve al abrir (los hornea form-offer). */
-export function flowStateData(def: FormDefinition, initial: Record<string, unknown>): Record<string, unknown> {
+export function flowStateData(rawDef: FormDefinition, initial: Record<string, unknown>): Record<string, unknown> {
+  const def = flowDefinition(rawDef);
   const data: Record<string, unknown> = {};
   for (const f of def.fields) {
     if (f.type !== 'group') continue;
-    for (let i = 1; i <= groupSlots(f); i++) data[showSlotKey(f.key, i)] = false;
+    for (let i = 1; i <= groupSlots(f); i++) {
+      const open = f.prefillable ? initial[addKey(f.key, i)] : undefined;
+      data[showSlotKey(f.key, i)] = Array.isArray(open) && open.includes(CHECKED);
+      if (f.prefillable) data[toggleInitKey(f.key, i)] = Array.isArray(open) ? open : [];
+    }
   }
   if (def.flowChoice) {
     const chosen = def.flowChoice.options.find(o => initial[o.field] !== undefined && initial[o.field] !== '')?.field ?? '';
@@ -158,6 +168,9 @@ function componentFor(f: FormField, name: string, labelPrefix = ''): Record<stri
   const init = `\${data.${initKey(name)}}`;
   switch (f.type) {
     case 'select':
+      if (f.radio) {
+        return { type: 'RadioButtonsGroup', name, label, required: f.required, 'data-source': f.options, 'init-value': init };
+      }
       // Opciones fijas (moneda, tipo de labor) van inline; las dinámicas
       // (lotes, categorías) se inyectan como data del screen al enviar el Flow.
       return {
@@ -183,7 +196,8 @@ function componentFor(f: FormField, name: string, labelPrefix = ''): Record<stri
  * con `${data.x}`, incluido un `__example__`; sin esto el Flow no valida al
  * publicarlo en Meta.
  */
-function dataSchemaFor(def: FormDefinition): Record<string, unknown> {
+function dataSchemaFor(rawDef: FormDefinition): Record<string, unknown> {
+  const def = flowDefinition(rawDef);
   const schema: Record<string, unknown> = {};
   const addScalar = (name: string, example = '') => {
     schema[initKey(name)] = { type: 'string', __example__: example };
@@ -200,14 +214,16 @@ function dataSchemaFor(def: FormDefinition): Record<string, unknown> {
   for (const [key, value] of Object.entries(flowStateData(def, {}))) {
     schema[key] = typeof value === 'boolean'
       ? { type: 'boolean', __example__: false }
-      : { type: 'string', __example__: '' };
+      : Array.isArray(value)
+        ? { type: 'array', items: { type: 'string' }, __example__: [] }
+        : { type: 'string', __example__: '' };
   }
 
   for (const f of def.fields) {
     if (f.type === 'group') {
       for (let i = 1; i <= groupSlots(f); i++) {
         for (const sub of f.fields ?? []) {
-          if (sub.type === 'select') addSelect(`${f.key}_${i}_${sub.key}`);
+          if (sub.type === 'select' && !sub.options) addSelect(`${f.key}_${i}_${sub.key}`);
           else if (sub.type !== 'group') addScalar(`${f.key}_${i}_${sub.key}`);
         }
       }
@@ -221,7 +237,8 @@ function dataSchemaFor(def: FormDefinition): Record<string, unknown> {
   return schema;
 }
 
-export function buildWhatsAppFlowJson(def: FormDefinition): Record<string, unknown> {
+export function buildWhatsAppFlowJson(rawDef: FormDefinition): Record<string, unknown> {
+  const def = flowDefinition(rawDef);
   const children: Record<string, unknown>[] = [];
   const names: string[] = [];
   const push = (c: Record<string, unknown> | null) => {
@@ -236,7 +253,7 @@ export function buildWhatsAppFlowJson(def: FormDefinition): Record<string, unkno
         push(slotToggle(f, i, slots));
         for (const sub of f.fields ?? []) {
           // Prefijo corto: "Cargas por camión 1: …" pasaba los 20 caracteres.
-          const c = componentFor({ ...sub, required: false }, `${f.key}_${i}_${sub.key}`, `${i}. `);
+          const c = componentFor({ ...sub, required: false }, `${f.key}_${i}_${sub.key}`, `${i + (f.slotOffset ?? 0)}. `);
           push(c && { ...c, visible: `\${data.${showSlotKey(f.key, i)}}` });
         }
       }
@@ -308,7 +325,9 @@ export function validateFlowData(
   for (const k of expectedFlowDataKeys(def)) {
     if (!(k in data)) { errors.push(`falta la clave "${k}"`); continue; }
     const v = data[k];
-    if (k.startsWith('show_')) {
+    if (/_add_\d+_init$/.test(k)) {
+      if (!Array.isArray(v)) errors.push(`"${k}" debe ser un array`);
+    } else if (k.startsWith('show_')) {
       if (typeof v !== 'boolean') errors.push(`"${k}" debe ser booleano`);
     } else if (k.endsWith('_options')) {
       if (!isOptionArray(v)) errors.push(`"${k}" debe ser array de {id,title} string`);
@@ -327,9 +346,10 @@ export function validateFlowData(
  * la Mini App.
  */
 export function unflattenFlowPayload(
-  def: FormDefinition,
+  rawDef: FormDefinition,
   payload: Record<string, unknown>,
 ): Record<string, unknown> {
+  const def = flowDefinition(rawDef);
   const out: Record<string, unknown> = {};
   const isEmpty = (v: unknown) => v === undefined || v === null || String(v).trim() === '';
   // Lo que quedó OCULTO no se guarda: el usuario cambió de idea y ya no lo ve.

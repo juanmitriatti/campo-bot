@@ -13,7 +13,8 @@ import { formSessionService } from '../services/form-session.service.js';
 import { getSetting } from '../services/settings.service.js';
 import { computeFormOptions } from './form-options.js';
 import { flowMarkerFor } from './form-flow-link.js';
-import type { FormDefinition } from './form-definitions.js';
+import { flowDefinition, type FormDefinition } from './form-definitions.js';
+import { livestockFlowInitial } from './livestock-rows.js';
 import { resolveFormInitialValues } from './form-prefill.js';
 import { initKey, optionsKey, isoToFlowDate, FIXED_GROUP_SLOTS, validateFlowData, fitFlowOptions, OTHER_OPTION, flowStateData } from './whatsapp-flow-generator.js';
 import { getTodayISO } from '../utils/date.js';
@@ -57,7 +58,14 @@ export async function appendMetaFlowOffer(
     mode: 'flow',
   });
   const data: Record<string, unknown> = {};
-  for (const f of def.fields) {
+  const flowFields = flowDefinition(def).fields;
+  for (const f of flowFields) {
+    for (const sub of f.type === 'group' ? f.fields ?? [] : []) {
+      if (!sub.optionsSource) continue;
+      for (let i = 1; i <= Math.min(f.maxItems ?? FIXED_GROUP_SLOTS, FIXED_GROUP_SLOTS); i++) {
+        data[optionsKey(`${f.key}_${i}_${sub.key}`)] = fitFlowOptions(opts.lists[sub.optionsSource] ?? [], false).options;
+      }
+    }
     if (!f.optionsSource) continue;
     const fit = fitFlowOptions(opts.lists[f.optionsSource] ?? [], !!f.allowOther);
     if (fit.truncated || fit.dropped) {
@@ -70,17 +78,18 @@ export async function appendMetaFlowOffer(
   // Misma resolución que usa el form web (form-prefill.ts, fuente única).
   // Flows exige que TODA clave declarada en el esquema de data venga en el
   // payload, así que las que no se resolvieron van como string vacío.
-  const initial = resolveFormInitialValues({
-    action: offer.action,
-    prefill: offer.prefill ?? {},
-    options: opts,
-    todayISO: getTodayISO(),
-  });
+  const initial: Record<string, unknown> = {
+    ...resolveFormInitialValues({ action: offer.action, prefill: offer.prefill ?? {}, options: opts, todayISO: getTodayISO() }),
+    ...(offer.action === 'add_livestock' ? livestockFlowInitial(offer.prefill ?? {}, opts) : {}),
+  };
   const prefilled: string[] = [];
-  for (const f of def.fields) {
+  for (const f of flowFields) {
     if (f.type === 'group') {
-      for (let i = 1; i <= FIXED_GROUP_SLOTS; i++) {
-        for (const sub of f.fields ?? []) data[initKey(`${f.key}_${i}_${sub.key}`)] = '';
+      for (let i = 1; i <= Math.min(f.maxItems ?? FIXED_GROUP_SLOTS, FIXED_GROUP_SLOTS); i++) {
+        for (const sub of f.fields ?? []) {
+          const name = `${f.key}_${i}_${sub.key}`;
+          data[initKey(name)] = typeof initial[name] === 'string' ? initial[name] : '';
+        }
       }
       continue;
     }

@@ -5695,4 +5695,83 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
     });
   });
 
+  describe('varias altas sin lote → un solo formulario (nov 2026)', () => {
+    let h: PipelineHarness;
+    let norte: number;
+    const today = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' });
+    type Flow = { type: string; body: string; flow: { flowToken: string; data: Record<string, unknown> } };
+    const flowOf = (items: unknown[]) => (items as Array<{ interactive?: Flow }>).find(i => i.interactive?.type === 'flow')?.interactive;
+    const groups = async () => (await h.q(`SELECT category::text AS c, count::int AS n FROM livestock_groups WHERE user_id = $1 AND count > 0 ORDER BY category::text`, [h.userId])).map(r => `${r.c}:${r.n}`);
+    const expenses = () => h.q(`SELECT id FROM expenses WHERE user_id = $1 AND deleted_at IS NULL`, [h.userId]);
+    const buy = async () => {
+      h.fakeAgent.enqueue([
+        { toolName: 'add_livestock', toolInput: { category: 'vaca', count: 3 } },
+        { toolName: 'add_livestock', toolInput: { category: 'ternero', count: 5 } },
+      ]);
+      return h.send('compre 3 vacas y 5 terneros');
+    };
+    const answer = (extra: Record<string, unknown> = {}) => ({ origin: 'compra', location: `p:${norte}`, event_date: today(), currency: 'ARS',
+      category: 'vaca', count: '3', price_mode: 'head', animals_add_1: ['si'], animals_1_category: 'ternero', animals_1_count: '5', animals_1_price_mode: 'head', ...extra });
+    beforeAll(async () => {
+      h = await createPipelineHarness('flow-hacienda', { channel: 'whatsapp' });
+      await setSetting('WHATSAPP_FORM_PROVIDER', 'meta_flow');
+      await setSetting('WHATSAPP_FLOW_ID_LIVESTOCK', 'flow_liv_test');
+      const f = await h.q(`INSERT INTO fields (user_id, name) VALUES ($1, 'los sauces') RETURNING id`, [h.userId]);
+      const fid = (f[0] as { id: number }).id;
+      norte = ((await h.q(`INSERT INTO plots (field_id, name, area_hectares) VALUES ($1, 'Norte', 100) RETURNING id`, [fid]))[0] as { id: number }).id;
+      await h.q(`INSERT INTO plots (field_id, name, area_hectares) VALUES ($1, 'Sur', 80)`, [fid]);
+    });
+    afterAll(async () => {
+      await setSetting('WHATSAPP_FORM_PROVIDER', 'conversation');
+      await setSetting('WHATSAPP_FLOW_ID_LIVESTOCK', '');
+      await h?.cleanup();
+    });
+    beforeEach(async () => {
+      await h.send('cancelar');
+      await h.q(`DELETE FROM expenses WHERE user_id = $1`, [h.userId]);
+      await h.q(`DELETE FROM livestock_movements WHERE user_id = $1`, [h.userId]);
+      await h.q(`DELETE FROM livestock_groups WHERE user_id = $1`, [h.userId]);
+    });
+
+    it('un mensaje con el formulario precargado y nada guardado todavía', async () => {
+      const items = await buy();
+      expect(items, h.allText(items)).toHaveLength(1);
+      const flow = flowOf(items)!;
+      expect(flow.body).toMatch(/3 vaca \+ 5 ternero/);
+      expect(flow.flow.data.animals_1_category_init).toBe('ternero');
+      expect(flow.flow.data.show_animals_1).toBe(true);
+      expect(await groups()).toEqual([]);
+    });
+
+    it('enviar guarda las dos categorías UNA vez, con gasto solo donde hay precio', async () => {
+      const flow = flowOf(await buy())!;
+      const payload = answer({ unit_price: '900000' });
+      const res = await submitForm(flow.flow.flowToken, payload, { flowResponse: true, deliver: 'return' });
+      expect(res.ok, JSON.stringify(res)).toBe(true);
+      expect(await groups()).toEqual(['ternero:5', 'vaca:3']);
+      expect(await expenses()).toHaveLength(1);
+      const again = await submitForm(flow.flow.flowToken, payload, { flowResponse: true, deliver: 'return' });
+      expect(again).toMatchObject({ ok: false, status: 409 });
+      expect(await groups()).toEqual(['ternero:5', 'vaca:3']);
+      // La compra sin precio queda preguntando; contestar anota el gasto.
+      await h.send('500 mil');
+      expect(await expenses()).toHaveLength(2);
+    });
+
+    it('si ya se contestó por chat, el formulario no vuelve a cargar', async () => {
+      const flow = flowOf(await buy())!;
+      await h.send('Norte');
+      const res = await submitForm(flow.flow.flowToken, answer(), { flowResponse: true, deliver: 'return' });
+      expect(res).toMatchObject({ ok: false, status: 409 });
+      expect(await groups()).toEqual(['vaca:3']);
+    });
+
+    it('una fila inválida no guarda ninguna', async () => {
+      const flow = flowOf(await buy())!;
+      const res = await submitForm(flow.flow.flowToken, answer({ animals_1_count: '' }), { flowResponse: true, deliver: 'return' });
+      expect(res).toMatchObject({ ok: false, status: 422 });
+      expect(await groups()).toEqual([]);
+    });
+  });
+
 });

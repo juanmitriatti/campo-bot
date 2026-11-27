@@ -34,6 +34,8 @@ describe('límites de Meta para Flows', () => {
   });
 });
 
+import { isLivestockFlowPayload, splitLivestockRows, applyLivestockExtra, livestockFlowInitial } from '../livestock-rows.js';
+
 describe('buildWhatsAppFlowJson', () => {
   it('siembra: un screen con los 5 campos mapeados a componentes de Flow', () => {
     const flow = buildWhatsAppFlowJson(FORM_DEFINITIONS.sow_crop) as {
@@ -114,28 +116,17 @@ describe('unflattenFlowPayload — inversa de los 5 slots', () => {
 });
 
 describe('validateFlowData — red de seguridad de las claves del data (Fase 2)', () => {
-  // El data completo que hornea form-offer para el alta de hacienda: las 11
-  // claves, todas string salvo los *_options (arrays de {id,title}).
-  const validLivestockData = (): Record<string, unknown> => ({
-    category_options: [{ id: 'novillo', title: 'Novillo' }],
-    category_init: '',
-    count_init: '',
-    breed_options: [{ id: 'angus', title: 'Angus' }],
-    breed_init: '',
-    location_options: [{ id: 'p:1', title: 'Lote 1' }],
-    location_init: '',
-    unit_price_init: '',
-    currency_init: 'ARS',
-    event_date_init: '2026-09-17',
-    notes_init: '',
-  });
+  // Data completo del alta de hacienda, derivado del propio esquema del Flow.
+  const validLivestockData = (): Record<string, unknown> => Object.fromEntries(
+    expectedFlowDataKeys(FORM_DEFINITIONS.add_livestock).map(k => [k,
+      /_add_\d+_init$/.test(k) ? [] : k.startsWith('show_') ? false : k.endsWith('_options') ? [{ id: 'x', title: 'X' }] : '']),
+  );
 
-  it('la definición de hacienda declara exactamente las 11 claves esperadas', () => {
-    expect(expectedFlowDataKeys(FORM_DEFINITIONS.add_livestock).sort()).toEqual([
-      'breed_init', 'breed_options', 'category_init', 'category_options',
-      'count_init', 'currency_init', 'event_date_init', 'location_init',
-      'location_options', 'notes_init', 'unit_price_init',
-    ]);
+  it('la definición de hacienda declara los campos base, el origen y las 4 filas extra', () => {
+    const keys = expectedFlowDataKeys(FORM_DEFINITIONS.add_livestock);
+    for (const k of ['category_init', 'category_options', 'origin_init', 'price_mode_init', 'location_options',
+      'animals_4_category_options', 'animals_add_4_init', 'show_animals_4']) expect(keys).toContain(k);
+    expect(keys).not.toContain('animals_5_category_init');
   });
 
   it('un data completo y bien tipado pasa', () => {
@@ -199,5 +190,42 @@ describe('cosecha: revelado progresivo de camiones y rinde', () => {
     expect(out.yield_kg).toBe('130000');
     expect(out.yield_kg_per_ha).toBeUndefined();
     expect(out.loads).toEqual([{ driver_name: 'Juan', weight_kg: '28000' }]);
+  });
+});
+
+describe('hacienda: filas, forma de precio y precarga', () => {
+  it('el des-aplanado arma las filas y descarta las ocultas', () => {
+    const out = unflattenFlowPayload(FORM_DEFINITIONS.add_livestock, {
+      origin: 'compra', location: 'p:1', category: 'vaca', count: '3', price_mode: 'head', unit_price: '900000',
+      animals_add_1: ['si'], animals_1_category: 'ternero', animals_1_count: '5', animals_1_price_mode: 'kg',
+      animals_add_2: [], animals_2_category: 'toro', animals_2_count: '1',
+    });
+    expect(isLivestockFlowPayload(out)).toBe(true);
+    const rows = splitLivestockRows(out);
+    expect(rows.map(r => r.payload.category)).toEqual(['vaca', 'ternero']);
+    expect(rows[1].payload.location).toBe('p:1');
+    expect(rows[1].extra.priceMode).toBe('kg');
+  });
+
+  it('forma de precio: por kg necesita peso para dejar gasto; total se divide', () => {
+    const kg: Record<string, unknown> = { count: 5, unit_price_ars: 3000 };
+    expect(applyLivestockExtra(kg, { origin: 'compra', priceMode: 'kg', avgWeightKg: 180 })).toEqual({ expectsExpense: true });
+    expect(kg).toMatchObject({ price_per_kg_ars: 3000, total_weight_kg: 900, isPurchase: true });
+    expect(kg.unit_price_ars).toBeUndefined();
+    const sinPeso: Record<string, unknown> = { count: 5, unit_price_ars: 3000 };
+    expect(applyLivestockExtra(sinPeso, { origin: 'compra', priceMode: 'kg', avgWeightKg: null }).expectsExpense).toBe(false);
+    const total: Record<string, unknown> = { count: 4, unit_price_usd: 2000 };
+    applyLivestockExtra(total, { origin: 'compra', priceMode: 'total', avgWeightKg: null });
+    expect(total.unit_price_usd).toBe(500);
+    const mias: Record<string, unknown> = { count: 20 };
+    applyLivestockExtra(mias, { origin: 'existente', priceMode: 'head', avgWeightKg: null });
+    expect(mias.isPurchase).toBeUndefined();
+  });
+
+  it('precarga: segunda categoría visible con su casilla marcada y forma de precio según categoría', () => {
+    const options = { lists: { livestock_categories: [{ id: 'vaca', title: 'Vaca' }, { id: 'ternero', title: 'Ternero' }], breeds: [] } } as never;
+    const initial = livestockFlowInitial({ _rows: [{ category: 'vaca', count: 3, isPurchase: true }, { category: 'ternero', count: 5 }] }, options);
+    expect(initial).toMatchObject({ origin: 'compra', price_mode: 'head', animals_1_category: 'ternero', animals_1_count: '5', animals_1_price_mode: 'kg', animals_add_1: ['si'] });
+    expect(flowStateData(FORM_DEFINITIONS.add_livestock, initial)).toMatchObject({ show_animals_1: true, show_animals_2: false });
   });
 });

@@ -121,7 +121,7 @@ describe('appendFormOffer', () => {
     },
   });
 
-  it('hacienda: mode=published omite la clave `mode` (Meta rechaza "published") y hornea las 11 claves', async () => {
+  it('hacienda: mode=published omite la clave `mode` (Meta rechaza "published") y hornea las claves del Flow', async () => {
     getSettingMock.mockImplementation(async (k: string) =>
       k === 'WHATSAPP_FORM_PROVIDER' ? 'meta_flow' : k === 'WHATSAPP_FLOW_ID_LIVESTOCK' ? 'flow_liv_1' : k === 'WHATSAPP_FLOW_MODE' ? 'published' : null);
     computeOptsMock.mockResolvedValue(livestockOpts([{ id: 'p:1', title: 'Lote 1' }]));
@@ -130,11 +130,9 @@ describe('appendFormOffer', () => {
     expect(items).toHaveLength(1);
     const flow = (items[0] as { interactive: { flow: { mode?: string; data: Record<string, unknown> } } }).interactive.flow;
     expect('mode' in flow).toBe(false); // clave AUSENTE, no vacía
-    expect(Object.keys(flow.data).sort()).toEqual([
-      'breed_init', 'breed_options', 'category_init', 'category_options',
-      'count_init', 'currency_init', 'event_date_init', 'location_init',
-      'location_options', 'notes_init', 'unit_price_init',
-    ]);
+    for (const k of ['category_options', 'origin_init', 'animals_1_category_options', 'show_animals_1']) {
+      expect(flow.data).toHaveProperty(k);
+    }
     // currency_init viaja vacío (Dropdown sin preseleccionar); el default ARS lo
     // pone el casteo al enviar, no el prellenado. event_date sí se prellena hoy.
     expect(flow.data.currency_init).toBe('');

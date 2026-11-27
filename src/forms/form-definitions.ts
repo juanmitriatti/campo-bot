@@ -43,6 +43,14 @@ export interface FormField {
   noFuture?: boolean;
   fields?: FormField[];
   maxItems?: number;
+  /** WhatsApp Flows: select rendido como botones de opción. */
+  radio?: boolean;
+  /** WhatsApp Flows: textos de la casilla que muestra cada bloque de un grupo. */
+  toggle?: { label: string; noun: string; first: string; next: string };
+  /** Grupo cuya fila 1 son los campos base: los bloques se numeran desde 2. */
+  slotOffset?: number;
+  /** Grupo que se puede abrir precargado (la casilla llega marcada). */
+  prefillable?: boolean;
   help?: string;
 }
 
@@ -62,6 +70,8 @@ export interface FormDefinition {
    * y el Flow lo muestran como texto, el colector conversacional lo pregunta.
    */
   crossCheck?: (data: Record<string, unknown>) => Array<string | FormIssue>;
+  /** Campos SOLO del Flow de WhatsApp (el form web y el de chat usan `fields`). */
+  flowFields?: FormField[];
   /** WhatsApp Flows: campos excluyentes; un selector muestra solo el elegido. */
   flowChoice?: { key: string; label: string; options: Array<{ field: string; title: string }> };
 }
@@ -85,6 +95,48 @@ export const DOSE_UNIT_OPTIONS: FormOption[] = ['lt/ha', 'kg/ha', 'cc/ha', 'lt',
   .map(u => ({ id: u, title: u }));
 
 const DATE_FIELD: FormField = { key: 'event_date', label: 'Fecha', type: 'date', required: true, noFuture: true };
+
+const PRICE_MODE_FIELD: FormField = {
+  key: 'price_mode', label: 'Precio es', type: 'select', required: false,
+  options: [{ id: 'head', title: 'Por cabeza' }, { id: 'kg', title: 'Por kg vivo' }, { id: 'total', title: 'Total' }],
+};
+const ROW_PRICE_FIELD: FormField = { key: 'unit_price', label: 'Precio', type: 'number', required: false, min: 0.01 };
+const AVG_WEIGHT_FIELD: FormField = { key: 'avg_weight_kg', label: 'Kg promedio', type: 'number', required: false, min: 1, max: 1500 };
+
+/** Flow de alta de hacienda: hasta 5 categorías, un lote para todo, precio opcional. */
+const LIVESTOCK_FLOW_FIELDS: FormField[] = [
+  {
+    key: 'origin', label: '¿Cómo entraron?', type: 'select', required: false, radio: true,
+    options: [{ id: 'compra', title: 'Compra' }, { id: 'existente', title: 'Ya los tenía' }, { id: 'otro', title: 'Otro ingreso' }],
+  },
+  { key: 'location', label: 'Lote o corral', type: 'select', required: true, optionsSource: 'livestock_locations' },
+  { key: 'event_date', label: 'Fecha', type: 'date', required: true, noFuture: true },
+  { key: 'category', label: 'Categoría', type: 'select', required: true, optionsSource: 'livestock_categories' },
+  { key: 'count', label: 'Cabezas', type: 'number', required: true, min: 1 },
+  { key: 'breed', label: 'Raza', type: 'select', required: false, optionsSource: 'breeds' },
+  PRICE_MODE_FIELD,
+  ROW_PRICE_FIELD,
+  AVG_WEIGHT_FIELD,
+  {
+    key: 'animals', label: 'Otras categorías', type: 'group', required: false, maxItems: 4, slotOffset: 1, prefillable: true,
+    toggle: { label: 'Más categorías', noun: 'Categoría', first: '➕ Agregar otra categoría', next: '➕ Agregar otra categoría' },
+    fields: [
+      { key: 'category', label: 'Categoría', type: 'select', required: false, optionsSource: 'livestock_categories' },
+      { key: 'count', label: 'Cabezas', type: 'number', required: false, min: 1 },
+      { key: 'breed', label: 'Raza', type: 'select', required: false, optionsSource: 'breeds' },
+      PRICE_MODE_FIELD,
+      ROW_PRICE_FIELD,
+      AVG_WEIGHT_FIELD,
+    ],
+  },
+  { key: 'currency', label: 'Moneda del precio', type: 'select', required: false, options: CURRENCY_OPTIONS },
+  { key: 'notes', label: 'Observaciones', type: 'text', required: false },
+];
+
+/** La definición tal como la ve el Flow de WhatsApp. */
+export function flowDefinition(def: FormDefinition): FormDefinition {
+  return def.flowFields ? { ...def, fields: def.flowFields } : def;
+}
 
 export const FORM_DEFINITIONS: Record<FormAction, FormDefinition> = {
   sow_crop: {
@@ -123,6 +175,7 @@ export const FORM_DEFINITIONS: Record<FormAction, FormDefinition> = {
       { key: 'humidity_pct', label: 'Humedad (%)', type: 'number', required: false, min: 0, max: 50 },
       {
         key: 'loads', label: 'Cargas por camión', type: 'group', required: false, maxItems: 20,
+        toggle: { label: 'Camiones', noun: 'Camión', first: 'Cargar camiones', next: '➕ Agregar otro camión' },
         fields: [
           { key: 'driver_name', label: 'Chofer', type: 'text', required: true },
           { key: 'weight_kg', label: 'Peso (kg)', type: 'number', required: true, min: 1 },
@@ -197,6 +250,7 @@ export const FORM_DEFINITIONS: Record<FormAction, FormDefinition> = {
     title: '🐄 Alta de hacienda',
     label: 'la hacienda',
     settingKey: 'WHATSAPP_FLOW_ID_LIVESTOCK',
+    flowFields: LIVESTOCK_FLOW_FIELDS,
     fields: [
       { key: 'category', label: 'Categoría', type: 'select', required: true, optionsSource: 'livestock_categories' },
       { key: 'count', label: 'Cabezas', type: 'number', required: true, min: 1 },

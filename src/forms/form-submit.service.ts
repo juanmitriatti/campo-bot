@@ -17,6 +17,8 @@ import { formSessionService, type FormSessionRow } from '../services/form-sessio
 import { FORM_DEFINITIONS, validateFormPayload, type FormAction, type FormDefinition } from './form-definitions.js';
 import { isSameFlowOpen, closeLinkedFlow, type FlowMarker } from './form-flow-link.js';
 import { applyCarry } from './activity-form-offer.js';
+import { isLivestockFlowPayload, splitLivestockRows } from './livestock-rows.js';
+import { submitLivestockRows } from './livestock-submit.js';
 import { buildFormCommand, FORM_PERSISTS_TO, type ResolvedRefs } from './form-commands.js';
 import { parseLocationId, computeFormOptions, NO_LOCATION_ID } from './form-options.js';
 import { unflattenFlowPayload } from './whatsapp-flow-generator.js';
@@ -394,6 +396,17 @@ export async function submitForm(
       return { ok: false, status: 403, error: await trialExpiredCopy() };
     }
     await hydratePendingStores(session.phone);
+
+    // Alta de hacienda del Flow v2 (varias categorías, origen, forma de precio):
+    // su propio commit, con las mismas validaciones fila por fila.
+    if (action === 'add_livestock' && opts.flowResponse && isLivestockFlowPayload(payload)) {
+      const done = await submitLivestockRows(token, session, splitLivestockRows(payload), user,
+        row => prepareSubmission(session.user_id, action, row));
+      if (done.ok && (opts.deliver ?? 'chat') === 'chat') {
+        await sendToChat(session, done.response.messages.join('\n\n'), done.response.interactive);
+      }
+      return done;
+    }
 
     // Caso borde del spec: había un pending al ofrecer el form y ya no está →
     // se resolvió por chat. No duplicar; cerrar el token.

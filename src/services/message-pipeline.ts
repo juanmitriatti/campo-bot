@@ -107,6 +107,7 @@ import {
 import type { ParsedExpense, ParsedIncome, HandlerResponse, Intent, FlowState, ParseResult, InteractiveButton, InteractiveListSection, UserId, PendingTransaction, ParsedCommand } from '../types/index.js';
 import { appendFormOffer } from '../forms/form-offer.js';
 import { partialMoneyFormOffer } from '../forms/activity-form-offer.js';
+import { offerLivestockBatch } from '../forms/livestock-batch-offer.js';
 import { formSessionService } from './form-session.service.js';
 import {
   formConversationStore, handleFormText, handleFormTap, type FormConversationDeps,
@@ -1837,6 +1838,15 @@ ${ask}` }];
   const expandedAll = await expandAllPlots(compoundResults && compoundResults.length > 1 ? compoundResults : [parseResult], userId);
   if (expandedAll) compoundResults = expandedAll.results;
   const truncatedFlag = (parseResult as any)._truncated === true;
+  // Varias altas de hacienda sin lote → un formulario, antes de partirlas en cola.
+  if (compoundResults && compoundResults.length > 1 && await featureGate.hasFeature(userId, 'livestock')) {
+    const batch = await offerLivestockBatch(compoundResults, ctx, text);
+    if (batch) {
+      applySideEffects({ setPendingActivity: batch.pending } as never, phone);
+      conversationLogger.log(userId, phone, text, batch.items.map(i => i.text ?? i.interactive?.body ?? '').join(' '), 'pending', 'add_livestock_batch', null, null, aiUsed, Date.now() - startTime, true, confidence, toolCallsData, agentMode, ctx.channel).catch(() => {});
+      return batch.items;
+    }
+  }
   if (compoundResults && compoundResults.length > 1) {
     const executor = new CompoundExecutor(domainRouter, financialHandler);
     const result = await executor.execute(compoundResults, userId, user, settings, text);
