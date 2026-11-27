@@ -57,6 +57,7 @@ const ONE_SHOT_TOKEN_GROUPS: RegExp[] = [
   // Campo de una lluvia (AGR-5): elegir otro campo del mismo teclado no la carga dos veces.
   /^rainfld_([A-Za-z0-9_-]{8})_\d+$/,
   /^lv_loc_(?:lote|feedlot)_([A-Za-z0-9_-]{8})$/,
+  /^stkdir_(?:in|out)_([A-Za-z0-9_-]{8})$/,
   // Trigo sin cosechar + soja: [Sí, ya se cosechó] / [No, se perdió] comparten
   // token; un segundo tap volvía a registrar la siembra (otro evento).
   /^sow_(?:after_harvest|replace)_([A-Za-z0-9_-]{8})$/,

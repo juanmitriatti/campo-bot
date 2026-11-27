@@ -44,6 +44,9 @@ describe.skipIf(!dbAvailable)('stock ambiguo y deshacer el gasto vencido', () =>
     expect(h.allButtons(items).map(b => b.title)).toEqual(['Los compré', 'Los usé', 'Cancelar']);
     await h.tap(h.allButtons(items)[0].id);
     expect(await stock()).toEqual([200]);
+    // El otro botón del mismo teclado ya no hace nada.
+    await h.tap(h.allButtons(items)[1].id);
+    expect(await stock()).toEqual([200]);
   });
 
   it('[Los usé] descuenta del stock que había', async () => {

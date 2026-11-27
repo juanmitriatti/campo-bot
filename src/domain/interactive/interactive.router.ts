@@ -173,6 +173,18 @@ export class InteractiveRouter {
     // Comando completo guardado por token (cmdtok_<token>): un botón que repite
     // la operación del usuario con el dato que faltaba ya puesto (p. ej. el lote
     // de unas cargas — AGR-11). Sin token vigente el botón está vencido.
+    // «gasté 200 litros»: el mismo comando guardado, como carga o como consumo.
+    const stockDirection = callbackId.match(/^stkdir_(in|out)_([A-Za-z0-9_-]{8})$/);
+    if (stockDirection) {
+      const stored = callbackPayloadStore.get(stockDirection[2]);
+      if (stored !== null) {
+        const cmd = JSON.parse(stored) as Record<string, unknown>;
+        if (stockDirection[1] === 'out') cmd.command = 'remove_stock';
+        return { type: 'command', data: cmd as never };
+      }
+      console.log(`[INTERCEPT] stkdir sin token vigente: ${callbackId.slice(0, 40)}`);
+    }
+
     const cmdTokMatch = callbackId.match(/^cmdtok_([A-Za-z0-9_-]{8})$/);
     if (cmdTokMatch) {
       try {

@@ -1071,7 +1071,14 @@ export async function closeExpiredFlow(flow, startedAtMs) {
     const lastId = async () => Number((await pool.query(`SELECT COALESCE(MAX(id), 0) AS id FROM ${table} WHERE user_id = $1`, [flow.userId])).rows[0].id);
     const before = await lastId();
     const items = await commitFinancialFlowFieldLevel(flow.userId, ctx, phone);
-    const saved = await lastId();
+    // La fila nueva CON el monto del flujo: una carga simultánea por el panel o
+    // por otro canal no puede quedar apuntada por el botón.
+    const amount = Number((ctx.data ?? {}).amount);
+    const { rows: mine } = await pool.query(
+      `SELECT id FROM ${table} WHERE user_id = $1 AND id > $2 AND amount = $3 ORDER BY id LIMIT 1`,
+      [flow.userId, before, Number.isFinite(amount) ? amount : -1],
+    );
+    const saved = mine[0] ? Number(mine[0].id) : null;
     await conversationEngine.clearFlow(flow.userId);
     result = { expired: true, text: null };
     if (items.length === 0) return;
@@ -1083,7 +1090,7 @@ export async function closeExpiredFlow(flow, startedAtMs) {
     result.text = failed ? body : `⏱️ No contestaste a tiempo, así que lo guardé con lo que tenía.\n\n${body}`;
     // El id va en el botón (no un token en memoria): el tap puede llegar horas
     // después o tras un deploy. La baja valida dueño y antigüedad.
-    if (!failed && saved > before) {
+    if (!failed && saved) {
       result.buttons = [{ id: `undo_auto_${table === "incomes" ? "income" : "expense"}_${saved}`, title: "Deshacer" }];
     }
   });

@@ -188,15 +188,17 @@ export class StockHandler {
     if ((cmd as ParsedCommand & { _bulkMode?: boolean })._bulkMode === true) {
       return { messages: [`📦 No toqué el stock con los ${amount}: decime «compré …» o «usé …».`] };
     }
-    const token = (data: Record<string, unknown>) => `cmdtok_${callbackPayloadStore.set(JSON.stringify({ ...data, __directionConfirmed: true }))}`;
+    // Un solo token para los dos: tocar uno consume el teclado (si no, [Los
+    // compré] y después [Los usé] dejaban dos movimientos).
+    const token = callbackPayloadStore.set(JSON.stringify({ ...cmd, __directionConfirmed: true }));
     return {
       messages: [],
       interactive: {
         type: 'buttons',
         body: `📦 ${amount}: ¿los *compraste* (entran al stock) o los *usaste* (salen)?`,
         buttons: [
-          { id: token({ ...cmd }), title: 'Los compré' },
-          { id: token({ ...cmd, command: 'remove_stock' }), title: 'Los usé' },
+          { id: `stkdir_in_${token}`, title: 'Los compré' },
+          { id: `stkdir_out_${token}`, title: 'Los usé' },
           { id: 'cancel_action', title: 'Cancelar' },
         ],
       },
