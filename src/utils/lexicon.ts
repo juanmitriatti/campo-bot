@@ -336,6 +336,17 @@ export function isSelfCorrectedNewRecord(text: string | null | undefined): boole
     && /,\s*(?:no|bah|digo|perdon)\s*,/.test(t);
 }
 
+/**
+ * "gasté 200 litros de gasoil": ¿los compró o los consumió? Sin verbo de
+ * entrada ni plata, no se sabe, y sumarlo al stock por las dudas lo inflaba.
+ */
+export function isAmbiguousStockSpend(text: string | null | undefined): boolean {
+  const t = normLex(text ?? '');
+  if (!/\bgast(?:e|amos|aron)\b/.test(t)) return false;
+  if (/\b(?:compr\w+|carg\w+|entr\w+|lleg\w+|ingres\w+|recib\w+|trajeron|traje)\b/.test(t)) return false;
+  return !/\$|\b(?:pesos?|dolares?|usd|mil|millon\w*|lucas?|palos?)\b/.test(t);
+}
+
 /** "todos los meses", "por mes", "gasto fijo": pide repetición, no un plan suelto. */
 export function mentionsRecurrence(text: string | null | undefined): boolean {
   return /\b(todos\s+los|todas\s+las|cada|por\s+(?:mes|semana|ano)|mensual\w*|bimestral\w*|trimestral\w*|semestral\w*|semanal\w*|anual\w*|cuotas?|fij[oa]s?|recurrente|automatic\w*|a\s+partir\s+de|desde|empiezo\s+a|arranco\s+a)\b/.test(normLex(text ?? ''));

@@ -1057,7 +1057,7 @@ let flowReminderTickRunning = false;
  * Devuelve { expired: false } si ya no hay nada vencido, o { text } (null si
  * no había nada completo para guardar).
  */
-async function closeExpiredFlow(flow, startedAtMs) {
+export async function closeExpiredFlow(flow, startedAtMs) {
   const { withUserLock } = await import("../middleware/user-lock.js");
   const { conversationEngine, commitFinancialFlowFieldLevel } = await import("./message-pipeline.js");
   const key = flow.phone ? `wa:${flow.phone}` : `tg:${flow.telegramId}`;
@@ -1066,7 +1066,12 @@ async function closeExpiredFlow(flow, startedAtMs) {
   await withUserLock(key, async () => {
     const ctx = await conversationEngine.getFlowContext(flow.userId);
     if (ctx.state === "idle" || !conversationEngine.isExpired(ctx)) return;
+    // Para ofrecer «Deshacer»: qué fila aparece al guardar (bajo el lock).
+    const table = (ctx.originFlow ?? ctx.state) === "income_flow" ? "incomes" : "expenses";
+    const lastId = async () => Number((await pool.query(`SELECT COALESCE(MAX(id), 0) AS id FROM ${table} WHERE user_id = $1`, [flow.userId])).rows[0].id);
+    const before = await lastId();
     const items = await commitFinancialFlowFieldLevel(flow.userId, ctx, phone);
+    const saved = await lastId();
     await conversationEngine.clearFlow(flow.userId);
     result = { expired: true, text: null };
     if (items.length === 0) return;
@@ -1076,6 +1081,11 @@ async function closeExpiredFlow(flow, startedAtMs) {
     const body = items.map(i => i.text || i.interactive?.body || "").join("\n\n").replace(/\n\s*📦[\s\S]*$/, "").trim();
     const failed = body.startsWith("⚠️ No pude guardar");
     result.text = failed ? body : `⏱️ No contestaste a tiempo, así que lo guardé con lo que tenía.\n\n${body}`;
+    // El id va en el botón (no un token en memoria): el tap puede llegar horas
+    // después o tras un deploy. La baja valida dueño y antigüedad.
+    if (!failed && saved > before) {
+      result.buttons = [{ id: `undo_auto_${table === "incomes" ? "income" : "expense"}_${saved}`, title: "Deshacer" }];
+    }
   });
   return result;
 }
@@ -1115,7 +1125,7 @@ export async function flowReminderTick() {
             { phone: flow.phone, telegramId: flow.telegramId },
             closed.text ?? buildTimeoutMessage(flow.flowState),
             'flow_timeout',
-            { dedupKey: `flow_timeout_${flow.userId}_${startedAtMs}` }
+            { dedupKey: `flow_timeout_${flow.userId}_${startedAtMs}`, buttons: closed.buttons }
           );
           console.log(`[flow-reminder] Timeout notice sent to user ${flow.userId} (flow: ${flow.flowState})`);
         } catch (err) {

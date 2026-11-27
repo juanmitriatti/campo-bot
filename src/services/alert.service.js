@@ -1,6 +1,6 @@
 import { pool } from "../config/db.js";
-import { sendMessageWithRetry } from "./whatsapp.js";
-import { sendTelegramMessage } from "./telegram.ts";
+import { sendMessageWithRetry, sendInteractiveButtons } from "./whatsapp.js";
+import { sendTelegramMessage, sendTelegramButtons } from "./telegram.ts";
 import { logError } from "./error-logger.js";
 import { getProactiveBlockReason, isOutsideWhatsAppWindow, deferMessage } from "./proactive-delivery.js";
 import { notifyOutsideWindow } from "./out-of-window-channels.js";
@@ -196,7 +196,7 @@ export async function sendAlertWithRetryMultiChannel(userId, { phone, telegramId
   if (!telegramId && phone && phone.startsWith('tg_')) {
     telegramId = phone.slice(3);
   }
-  const { fieldId = null, plotId = null, dedupKey = null, payload = {} } = metadata;
+  const { fieldId = null, plotId = null, dedupKey = null, payload = {}, buttons = null } = metadata;
 
   const { rows } = await pool.query(
     `INSERT INTO alert_history (user_id, alert_type, field_id, plot_id, message, payload, status, dedup_key)
@@ -293,6 +293,14 @@ export async function sendAlertWithRetryMultiChannel(userId, { phone, telegramId
       `UPDATE alert_history SET status = 'sent', delivered_at = NOW() WHERE id = $1`,
       [alertId]
     );
+    if (buttons?.length) {
+      try {
+        if (channel === "telegram") await sendTelegramButtons(telegramId, "¿Lo deshago?", buttons);
+        else await sendInteractiveButtons(phone, "¿Lo deshago?", buttons);
+      } catch (err) {
+        console.warn("[alert.service] no pude mandar los botones a user " + userId + ": " + err.message);
+      }
+    }
     return { sent: true, alertId };
   }
 

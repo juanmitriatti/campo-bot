@@ -477,6 +477,23 @@ async function executeDestructive(
   return items;
 }
 
+/** «Deshacer» del registro que el cron guardó solo: del autor y hasta 48 h. */
+async function undoAutoSaved(kind: 'expense' | 'income', id: number, userId: UserId): Promise<BotResponseItem[]> {
+  const table = kind === 'income' ? 'incomes' : 'expenses';
+  const noun = kind === 'income' ? 'ingreso' : 'gasto';
+  const { rows } = await pool.query(
+    `UPDATE ${table} SET deleted_at = NOW()
+      WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL AND created_at > NOW() - INTERVAL '48 hours'
+      RETURNING amount, currency, category`,
+    [id, userId],
+  );
+  console.log(`[INTERCEPT] deshacer ${noun} auto-guardado ${id}: ${rows.length ? 'borrado' : 'ya no está o es viejo'}`);
+  if (!rows.length) return [{ type: 'text', text: `Ese ${noun} ya no está para deshacer. No cambié nada.` }];
+  const r = rows[0] as { amount: string; currency: string; category: string };
+  const money = r.currency === 'USD' ? `US$ ${Number(r.amount).toLocaleString('es-AR')}` : `$${Number(r.amount).toLocaleString('es-AR')}`;
+  return [{ type: 'text', text: `↩️ Listo, borré el ${noun}: ${r.category} ${money}.` }];
+}
+
 /** «Deshacer» de un gasto o ingreso borrado: solo del autor y una sola vez. */
 async function undoDelete(token: string, userId: UserId): Promise<BotResponseItem[]> {
   const raw = callbackPayloadStore.get(token);
@@ -3017,6 +3034,8 @@ async function handleInteractiveReplyInner(
   }
 
   if (callbackId.startsWith('undo_del_')) return undoDelete(callbackId.slice('undo_del_'.length), userId);
+  const autoUndo = /^undo_auto_(expense|income)_(\d+)$/.exec(callbackId);
+  if (autoUndo) return undoAutoSaved(autoUndo[1] as 'expense' | 'income', Number(autoUndo[2]), userId);
 
   // «Sin precio»: ESA pregunta se cierra de verdad (antes seguía 30 minutos y el
   // número siguiente se guardaba como precio); lo que está en cola se pregunta.

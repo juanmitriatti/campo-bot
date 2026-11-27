@@ -1,3 +1,5 @@
+import { isAmbiguousStockSpend } from '../../utils/lexicon.js';
+import { callbackPayloadStore } from '../../middleware/callback-payload-store.js';
 import type { StockRow, StockRenderCtx } from './stock-renderers.js';
 import { StockService } from './stock.service.js';
 import { isLow as isLowStock } from './stock-renderers.js';
@@ -69,6 +71,11 @@ export class StockHandler {
     const product = cmd.product as string;
     const quantity = cmd.quantity as number;
     const unit = cmd.unit as string;
+
+    if (cmd.__directionConfirmed !== true && cmd.unit_price_ars == null && cmd.unit_price_usd == null
+        && product && quantity > 0 && unit && isAmbiguousStockSpend(cmd.originalText as string | null)) {
+      return this.askStockDirection(cmd, product, quantity, unit);
+    }
 
     // Unified pending-action guard. When the user says "Cargá stock" without
     // specifying product/quantity/unit, persist the partial cmd and let the
@@ -170,6 +177,29 @@ export class StockHandler {
         `  🏭 ${item.warehouse_name || 'Principal'} (${item.field_name || ''})` +
         expenseLine,
       ],
+    };
+  }
+
+  /** «gasté 200 litros»: no se toca el stock hasta saber si entraron o salieron. */
+  private askStockDirection(cmd: ParsedCommand, product: string, quantity: number, unit: string): HandlerResponse {
+    const amount = `${quantity.toLocaleString('es-AR')} ${unit} de ${product}`;
+    console.log(`[INTERCEPT] add_stock ambiguo ("gasté"): se pregunta si se compraron o se usaron`);
+    // En un mensaje con varias acciones no se frena (invariante 7): se avisa.
+    if ((cmd as ParsedCommand & { _bulkMode?: boolean })._bulkMode === true) {
+      return { messages: [`📦 No toqué el stock con los ${amount}: decime «compré …» o «usé …».`] };
+    }
+    const token = (data: Record<string, unknown>) => `cmdtok_${callbackPayloadStore.set(JSON.stringify({ ...data, __directionConfirmed: true }))}`;
+    return {
+      messages: [],
+      interactive: {
+        type: 'buttons',
+        body: `📦 ${amount}: ¿los *compraste* (entran al stock) o los *usaste* (salen)?`,
+        buttons: [
+          { id: token({ ...cmd }), title: 'Los compré' },
+          { id: token({ ...cmd, command: 'remove_stock' }), title: 'Los usé' },
+          { id: 'cancel_action', title: 'Cancelar' },
+        ],
+      },
     };
   }
 
