@@ -19,7 +19,7 @@ import { isSameFlowOpen, closeLinkedFlow, type FlowMarker } from './form-flow-li
 import { applyCarry } from './activity-form-offer.js';
 import { isLivestockFlowPayload, splitLivestockRows } from './livestock-rows.js';
 import { submitLivestockRows } from './livestock-submit.js';
-import { findRecordSinceForm, alreadyLoadedMessage } from './form-duplicate.js';
+import { findRecordSinceForm, duplicateQuestion } from './form-duplicate.js';
 import { buildFormCommand, FORM_PERSISTS_TO, type ResolvedRefs } from './form-commands.js';
 import { parseLocationId, computeFormOptions, NO_LOCATION_ID } from './form-options.js';
 import { unflattenFlowPayload } from './whatsapp-flow-generator.js';
@@ -433,17 +433,12 @@ export async function submitForm(
         error: `El lote ${prepared.refs.plot?.name ?? ''} ya tiene ${prepared.refs.activeOther} activo. Elegí otro lote, o cargá la siembra por el chat para reemplazar esa campaña.`,
       };
     }
-    // Llega tarde (la pregunta ya se contestó, venció o cambió): se guarda,
-    // salvo que desde que se abrió ya haya un registro igual.
-    const loaded = await findRecordSinceForm(token, Number(session.user_id), action, prepared.data, prepared.refs,
-      session.prefill as Record<string, unknown> | undefined);
-    if (loaded) {
-      console.log(`[FORM] rejected: ya se cargó por chat (${action})`);
-      await formSessionService.claim(token);
-      return { ok: false, status: 409, error: alreadyLoadedMessage(loaded) };
-    }
     const cmd = buildFormCommand(action, prepared.data, prepared.refs);
     applyCarry(cmd, session.prefill as Record<string, unknown> | null | undefined);
+    // Llega tarde (la pregunta ya se contestó, venció o cambió): se guarda,
+    // salvo que parezca repetido; ahí se pregunta, no se descarta.
+    const loaded = await findRecordSinceForm(token, Number(session.user_id), action, prepared.data, prepared.refs,
+      session.prefill as Record<string, unknown> | undefined);
 
     // El formulario YA es la confirmación: no volver a preguntar "¿confirmás?"
     // (el submit trataría los botones como éxito y quemaría el token sin guardar).
@@ -458,6 +453,23 @@ export async function submitForm(
         console.log('[FORM] pending consumido por submit');
       }
     };
+
+    // Nada quedó escrito y el botón guarda el comando completo: el formulario se
+    // cierra y el pending y el flujo que acompañaba se consumen acá (si no, se
+    // podía registrar dos veces).
+    const askToConfirm = async (asked: HandlerResponse): Promise<SubmitResult> => {
+      if (!(await formSessionService.claim(token))) return explainDeadToken(token);
+      if (linked) await closeLinkedFlow(Number(session.user_id));
+      consumePending(cmd);
+      const question = asked.interactive?.body ?? '';
+      if ((opts.deliver ?? 'chat') === 'chat') await sendToChat(session, '', asked.interactive);
+      console.log(`[FORM] submitted action=${action} user=${session.user_id} pide confirmación (nada guardado todavía)`);
+      return { ok: true, message: `${question}\n\nRespondé con los botones en el chat.`, response: asked };
+    };
+    if (loaded) {
+      console.log(`[FORM] [INTERCEPT] posible duplicado (${action}): se pregunta`);
+      return askToConfirm(duplicateQuestion(loaded, cmd as Record<string, unknown>));
+    }
 
     let response: HandlerResponse;
     try {
@@ -506,16 +518,7 @@ export async function submitForm(
     } catch (err) {
       if (err instanceof CommitAborted) return err.result;
       if (!(err instanceof ConfirmationNeeded)) throw err;
-      // Nada quedó escrito. El formulario se cierra y manda el botón: el
-      // pending y el flujo que acompañaba se consumen acá, porque el botón
-      // guarda el comando completo (si no, se podía registrar dos veces).
-      if (!(await formSessionService.claim(token))) return explainDeadToken(token);
-      if (linked) await closeLinkedFlow(Number(session.user_id));
-      consumePending(cmd);
-      const question = err.response.interactive?.body ?? '';
-      if ((opts.deliver ?? 'chat') === 'chat') await sendToChat(session, '', err.response.interactive);
-      console.log(`[FORM] submitted action=${action} user=${session.user_id} pide confirmación (nada guardado todavía)`);
-      return { ok: true, message: `${question}\n\nRespondé con los botones en el chat.`, response: err.response };
+      return askToConfirm(err.response);
     }
 
     // Éxito: side effects legítimos (ej. botones de cierre de campaña tras

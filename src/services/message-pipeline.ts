@@ -31,7 +31,8 @@ import { InteractiveRouter } from '../domain/interactive/interactive.router.js';
 import { FinancialHandler } from '../domain/financial/financial.handler.js';
 import { FinancialService } from '../domain/financial/financial.service.js';
 import { LivestockRepository } from '../domain/livestock/livestock.repository.js';
-import { extractCountCorrection } from '../utils/self-correction.js';
+import { extractCountCorrection, isNewHerdStatement } from '../utils/self-correction.js';
+import { headNumbersInText } from '../utils/lexicon.js';
 import { FinancialRepository } from '../domain/financial/financial.repository.js';
 import { AgronomyHandler } from '../domain/agronomy/agronomy.handler.js';
 import { AgronomyRepository } from '../domain/agronomy/agronomy.repository.js';
@@ -1471,8 +1472,9 @@ async function processTextMessageInner(
     // igual — ver looksLikeLivestockCount.
     // "tengo 7 vacas en el 5g" con "¿a cuánto fue?" abierta es un alta nueva,
     // no un precio de 7 (nov 2026).
-    const newHerd = pendingAct.command === 'set_livestock_price' && looksLikeLivestockCount(text)
-      && /^\s*(?:y\s+|tambi[eé]n\s+|adem[aá]s\s+)?(?:tengo|tenemos|hay|quedan|me\s+quedan)\b/i.test(text);
+    // Un número pegado al animal ("7 vacas en el Sur", "son 7 vacas") sin
+    // señal de plata ni marca de corrección es otro grupo, con o sin verbo.
+    const newHerd = pendingAct.command === 'set_livestock_price' && isNewHerdStatement(text);
     if (newHerd) console.log('[INTERCEPT] alta nueva con la pregunta de precio abierta: no se toma como precio');
     const livestockPivot = newHerd || (!expectsFinancialSlot && looksLikeLivestockCount(text));
     const escapePending = (strictEscape ? (hasActionVerbOrQuery(text) || livestockPivot) : looksLikeNewActionOrQuery(text))
@@ -1550,7 +1552,12 @@ async function processTextMessageInner(
       // inventory at the wrong (uncorrected) count.
       const lvMovementId = (pendingAct.data as Record<string, unknown> | undefined)?.movementId;
       if (pendingAct.command === 'set_livestock_price' && lvMovementId) {
-        const newCount = extractCountCorrection(text);
+        let newCount = extractCountCorrection(text);
+        // "no, eran 1800" / "no, 2000" sin nombrar el animal es el precio.
+        if (newCount != null && newCount >= 1000 && headNumbersInText(text).length === 0) {
+          console.log(`[INTERCEPT] "${text.slice(0, 30)}" con la pregunta de precio: es precio, no cantidad`);
+          newCount = null;
+        }
         if (newCount != null) {
           const corr = await new LivestockRepository().correctUnpricedMovementCount(userId, String(lvMovementId), newCount);
           if (corr && typeof corr === 'object' && 'insufficient' in corr) {
@@ -3405,7 +3412,11 @@ async function handleInteractiveReplyInner(
     const preFormNotes = ctx.channel === 'whatsapp' && /^open_form_/.test(intent.data.command)
       ? await resolveCollectorsBeforeForm(ctx)
       : [];
-    const response = await domainRouter.routeCommand(intent.data, userId, user, settings);
+    // «Guardar igual» de un formulario: el tap ya es la confirmación (sin otra tarjeta).
+    const tapSettings = (intent.data as Record<string, unknown>).__confirmedByTap === true
+      ? { ...settings, confirm_before_save: false }
+      : settings;
+    const response = await domainRouter.routeCommand(intent.data, userId, user, tapSettings);
     if (response) {
       // Un handler que pide arrancar un flow desde un TAP (cmd_agregar_campo →
       // prompt_add_field → field_flow) — mismo tratamiento que el path de

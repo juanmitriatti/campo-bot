@@ -80,6 +80,13 @@ export async function getProactiveBlockReason(userId, alertType) {
  * La ventana la abre lo que manda el USUARIO; lo que manda el bot no cuenta.
  */
 export async function isOutsideWhatsAppWindow(userId) {
+  const last = await lastWhatsAppInboundAt(userId);
+  if (!last) return true;
+  return Date.now() - new Date(last).getTime() > WHATSAPP_WINDOW_HOURS * 3600_000;
+}
+
+/** Último mensaje que el usuario mandó por WhatsApp (abre la ventana de 24 h), o null. */
+export async function lastWhatsAppInboundAt(userId) {
   const { rows } = await pool.query(
     // Solo lo que escribió por WHATSAPP: un mensaje por Telegram o el test-bot
     // no abre la ventana de WhatsApp.
@@ -88,9 +95,7 @@ export async function isOutsideWhatsAppWindow(userId) {
         AND COALESCE(channel, 'whatsapp') = 'whatsapp'`,
     [userId]
   );
-  const last = rows[0]?.last_in;
-  if (!last) return true;
-  return Date.now() - new Date(last).getTime() > WHATSAPP_WINDOW_HOURS * 3600_000;
+  return rows[0]?.last_in ?? null;
 }
 
 /**

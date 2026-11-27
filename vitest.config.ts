@@ -9,5 +9,9 @@ export default defineConfig({
   test: {
     testTimeout: 20_000,
     hookTimeout: 40_000,
+    // Cada worker abre su pool (10 conexiones): con 14 CPUs y 208 archivos se
+    // pasaban las 100 de Postgres ("too many clients", nov 2026).
+    maxWorkers: 6,
+    minWorkers: 1,
   },
 });

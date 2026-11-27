@@ -2986,11 +2986,9 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
       const token = await open();
       await h.q(`INSERT INTO expenses (user_id, amount, currency, category, expense_date) VALUES ($1, 7500, 'ARS', 'Sueldos', CURRENT_DATE)`, [h.userId]);
       const dup = await submitForm(token, payload, { deliver: 'return' });
-      expect(dup.ok).toBe(false);
-      if (!dup.ok) {
-        expect(dup.status).toBe(409);
-        expect(dup.error).toContain('$7.500');
-      }
+      expect(dup.ok, JSON.stringify(dup)).toBe(true);
+      expect(dup.ok && dup.message).toContain('$7.500');
+      expect(dup.ok && dup.response?.needsConfirmation).toBe(true);
       expect(await count()).toBe(2);
       const row = await h.q(`SELECT used_at FROM form_sessions WHERE token = $1`, [token]);
       expect((row[0] as { used_at: string | null }).used_at).not.toBeNull();
@@ -5688,13 +5686,13 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
       expect(await expenses()).toHaveLength(1);
     });
 
-    it('si ya se resolvió por chat, el formulario viejo no guarda de nuevo (ni corrigiendo el monto)', async () => {
+    it('si ya se resolvió por chat, el formulario viejo pregunta y no guarda solo (ni corrigiendo el monto)', async () => {
       const [flow] = flows(await ask());
       await h.send('Norte');
       await h.send('sí'); // confirma la tarjeta
       expect(await expenses()).toHaveLength(1);
       const res = await submitForm(flow.flow.flowToken, { ...payload(), amount: '120000' }, { flowResponse: true, deliver: 'return' });
-      expect(res).toMatchObject({ ok: false, status: 409 });
+      expect(res.ok && res.response?.needsConfirmation, JSON.stringify(res)).toBe(true);
       expect(await expenses()).toHaveLength(1);
     });
 
@@ -5882,7 +5880,7 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
       expect(await groups()).toEqual(['vaca:3']);
       const res = await submitForm(flow.flow.flowToken, answer(), { flowResponse: true, deliver: 'return' });
       expect(res.ok, JSON.stringify(res)).toBe(true);
-      expect(res.ok && res.message).toMatch(/No repetí un ingreso de 3 vaca/);
+      expect(res.ok && res.response?.interactive?.body).toMatch(/ya cargaste un ingreso de 3 vaca/);
       expect(await groups()).toEqual(['ternero:5', 'vaca:3']);
     });
 

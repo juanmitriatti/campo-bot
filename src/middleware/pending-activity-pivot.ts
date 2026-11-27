@@ -1,3 +1,4 @@
+import { pool } from '../config/db.js';
 import type { PendingActivity } from './pending-activities.js';
 import type { AgronomyHandler } from '../domain/agronomy/agronomy.handler.js';
 import type { UserId } from '../types/index.js';
@@ -29,6 +30,33 @@ function describePendingActivity(pending: PendingActivity): string | null {
   }
 }
 
+async function describeUnpriced(userId: UserId, pending: PendingActivity): Promise<string | null> {
+  const d = (pending.data ?? {}) as Record<string, unknown>;
+  if (pending.command === 'set_livestock_price' && d.movementId) {
+    const { rows } = await pool.query(
+      `SELECT m.count, m.movement_type, g.category::text AS category FROM livestock_movements m
+         LEFT JOIN livestock_groups g ON g.id = COALESCE(m.dest_group_id, m.source_group_id)
+        WHERE m.id = $1 AND m.user_id = $2`,
+      [d.movementId, userId],
+    );
+    const m = rows[0] as { count: number; movement_type: string; category: string | null } | undefined;
+    if (!m) return null;
+    const verb = m.movement_type === 'entrada' ? 'la compra' : 'la venta';
+    const what = `${m.count} ${(m.category ?? 'animales').toLowerCase()}`;
+    // Precio por kilo ya dicho: lo que faltaba era el peso.
+    if ((pending.missing ?? []).includes('quantity')) {
+      return `💡 ${verb === 'la compra' ? 'La compra' : 'La venta'} de ${what} quedó *sin importe*: me faltaban los kilos totales para calcularlo.`;
+    }
+    return `💡 Dejé *sin precio* ${verb} de ${what}. Cuando lo sepas, decime cuánto salió cada una.`;
+  }
+  if ((pending.command === 'log_expense' || pending.command === 'log_income') && (pending.missing ?? []).includes('amount')) {
+    const noun = pending.command === 'log_income' ? 'el ingreso' : 'el gasto';
+    const of = typeof d.category === 'string' && d.category ? ` de ${d.category}` : '';
+    return `💡 *No guardé* ${noun}${of}: faltaba el monto. Mandámelo completo cuando quieras.`;
+  }
+  return null;
+}
+
 /**
  * Broad pivot-data-loss guard for pendingActStore: when the user abandons a
  * pending registration (typed a new action/query instead of the "¿en qué lote?"
@@ -50,6 +78,12 @@ export async function flushPendingActivityOnPivot(
   // sin lote" SIN PRODUCTO, porque el usuario preguntó qué lotes tenía en
   // medio del pending. En ese caso corresponde el aviso, no un save.
   const missing = pending.missing ?? [];
+  // Una pregunta de precio o de monto que se abandona se borraba sin decir nada.
+  const money = await describeUnpriced(userId, pending);
+  if (money) {
+    console.log(`[INTERCEPT] pivot: ${pending.command} abandonado — ${money.replace(/\*/g, '')}`);
+    return [money];
+  }
   const onlyLocationMissing = missing.every((s) => s === 'plot' || s === 'field');
   // 1. Try an actual field-level save (spray/fert/tillage/irrigation).
   if (onlyLocationMissing) {

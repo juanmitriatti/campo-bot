@@ -1913,6 +1913,17 @@
 
       <h1 class="page-title" id="detail-user-title">Detalle de Usuario</h1>
 
+      <!-- ¿Puede usar el bot? -->
+      <div class="detail-section" id="bot-access-section">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+          <h3 style="margin:0;">¿Puede usar el bot?</h3>
+          <button class="btn btn-secondary btn-sm" id="bot-access-recheck" onclick="loadUserBotAccess(currentUserId)">Volver a chequear</button>
+        </div>
+        <div id="bot-access-container" style="margin-top:12px;">
+          <div class="loading"><div class="spinner"></div> Chequeando...</div>
+        </div>
+      </div>
+
       <!-- User Info -->
       <div class="detail-section">
         <h3>Informaci&oacute;n del Usuario</h3>
@@ -3024,6 +3035,44 @@
       loadUserPlanSelector(id);
       loadUserFinancialSummary(id);
       loadUserSharedFields(id);
+      loadUserBotAccess(id);
+    }
+
+    // ¿Puede usar el bot? Tilde verde = bien, cruz roja = le impide usarlo, punto gris = dato.
+    function loadUserBotAccess(id) {
+      var container = document.getElementById('bot-access-container');
+      var btn = document.getElementById('bot-access-recheck');
+      if (!id) return;
+      container.innerHTML = '<div class="loading"><div class="spinner"></div> Chequeando...</div>';
+      btn.disabled = true;
+      apiFetch('/admin/api/users/' + id + '/bot-access').then(function(r) {
+        btn.disabled = false;
+        if (!r || !r.checks) {
+          container.innerHTML = '<div class="empty-state">No se pudo chequear. Probá de nuevo.</div>';
+          return;
+        }
+        var color = r.verdict === 'puede' ? 'var(--success)' : r.verdict === 'solo_lectura' ? 'var(--warning)' : 'var(--danger)';
+        var icon = r.verdict === 'puede' ? '✅' : r.verdict === 'solo_lectura' ? '⚠️' : '❌';
+        var html = '<div style="display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:8px;border-left:4px solid ' + color + ';background:var(--bg, #f9fafb);font-weight:600;">'
+          + icon + ' ' + escapeHtml(r.summary) + '</div>';
+        html += '<ul style="list-style:none;margin:10px 0 0;padding:0;display:flex;flex-direction:column;gap:6px;">';
+        for (var i = 0; i < r.checks.length; i++) {
+          var c = r.checks[i];
+          var mark = c.ok === true
+            ? '<span title="Bien" style="color:var(--success);font-weight:700;">✓</span>'
+            : c.ok === false
+              ? '<span title="Le impide usar el bot" style="color:var(--danger);font-weight:700;">✗</span>'
+              : '<span title="Dato" style="color:var(--text-light);">•</span>';
+          html += '<li style="display:grid;grid-template-columns:20px minmax(140px,220px) 1fr;gap:8px;align-items:baseline;">'
+            + mark
+            + '<span style="font-weight:500;">' + escapeHtml(c.label) + '</span>'
+            + '<span style="color:var(--text-secondary);">' + escapeHtml(c.detail) + '</span>'
+            + '</li>';
+        }
+        html += '</ul>';
+        html += '<div style="margin-top:8px;font-size:12px;color:var(--text-light);">Chequeado ' + escapeHtml(new Date(r.checkedAt).toLocaleString('es-AR')) + '</div>';
+        container.innerHTML = html;
+      });
     }
 
     function loadUserFinancialSummary(id) {

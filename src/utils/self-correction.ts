@@ -1,3 +1,4 @@
+import { headNumbersInText } from './lexicon.js';
 import { extractCropFromText } from './crops.js';
 import { CORRECTION_ALT } from './lexicon.js';
 
@@ -6,22 +7,32 @@ import { CORRECTION_ALT } from './lexicon.js';
 // NO price markers. Used to distinguish a quantity correction from a price
 // answer while a livestock price-pending is open (bug: "vendí 5 → ¿precio? →
 // no, eran 8" silently kept 5 instead of correcting to 8).
-const PRICE_MARKER_RE = /[$]|\busd\b|d[oó]lar|peso|\bmil\b|\bpalos?\b|\blucas?\b|c\/u|cabeza|\bcada\b|\bkg\b|\blt\b|por\s+(?:cabeza|cero|tonelada|kilo)/iu;
-// Con marca de corrección ("no, eran 8"), o la cópula con el animal nombrado
-// ("eran 8 vacas"). "fueron 1800" a secas es la respuesta a "¿a cuánto fue?":
-// tomarlo como cantidad cambiaba el rodeo a 1800 cabezas.
+const PRICE_MARKER_RE = /[$]|\busd\b|d[oó]lar|peso|\bmil\b|\bmill[oó]n(?:es)?\b|\bkilos?\b|\bpalos?\b|\blucas?\b|c\/u|cabeza|\bcada\b|\bkg\b|\blt\b|por\s+(?:cabeza|cero|tonelada|kilo)/iu;
+// SOLO con marca de corrección ("no, eran 8"). "fueron 1800" es la respuesta a
+// "¿a cuánto fue?" y "son 7 vacas" un alta nueva: tomarlos como cantidad
+// cambiaba la compra anterior.
 const COUNT_CORRECTION_RE = new RegExp(`\\b(?:${CORRECTION_ALT})(?![\\p{L}])[^\\d]{0,20}?(\\d{1,5})\\b(?![.,]\\d)`, 'iu');
-const COUNT_NOUN_CORRECTION_RE = /\b(?:eran|son|fueron|fue|era)\b[^\d]{0,15}?(\d{1,5})\s+(?:cabezas?|animales?|vacas?|novill\w*|terner\w*|toros?|torit\w*|vaquillonas?|bueyes?)\b/iu;
 
 /**
  * Extracts the corrected COUNT from a quantity-correction message, or null when
  * the message isn't a count correction (no cue) or is actually a price answer
  * (has $/USD/mil/palo/per-head markers → let the price slot handle it).
  */
+/**
+ * Con "¿a cuánto fue?" abierta: ¿el mensaje declara OTRO grupo de animales?
+ * Un número pegado al animal, sin plata y sin "no, eran".
+ */
+export function isNewHerdStatement(text: string): boolean {
+  const heads = headNumbersInText(text);
+  if (heads.length === 0 || PRICE_MARKER_RE.test(text) || extractCountCorrection(text) != null) return false;
+  // Otro número grande al lado es plata ("20 vacas 18000000").
+  return !(text.match(/\d+(?:[.,]\d+)*/g) ?? []).some(raw => Number(raw.replace(/\./g, '').replace(',', '.')) >= 10_000);
+}
+
 export function extractCountCorrection(text: string): number | null {
   if (!text) return null;
   if (PRICE_MARKER_RE.test(text)) return null; // it's a price, not a count
-  const m = COUNT_CORRECTION_RE.exec(text) ?? COUNT_NOUN_CORRECTION_RE.exec(text);
+  const m = COUNT_CORRECTION_RE.exec(text);
   if (!m) return null;
   const n = parseInt(m[1], 10);
   return Number.isFinite(n) && n > 0 && n < 100000 ? n : null;

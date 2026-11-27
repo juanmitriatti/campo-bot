@@ -1071,6 +1071,23 @@ router.get("/api/users/:id/audio-usage", async (req, res) => {
   }
 });
 
+// ─── GET /dashboard/api/users/:id/bot-access ────────────────────────────────
+// ¿Puede usar el bot? Mismas reglas que el webhook (bot-access-check.service).
+
+router.get("/api/users/:id/bot-access", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: "id inválido" });
+  try {
+    const { getBotAccessReport } = await import("../services/bot-access-check.service.js");
+    const report = await getBotAccessReport(id);
+    if (!report) return res.status(404).json({ error: "Usuario no encontrado" });
+    res.json(report);
+  } catch (err) {
+    console.error("GET /api/users/:id/bot-access error:", err);
+    res.status(500).json({ error: "No se pudo chequear el acceso al bot" });
+  }
+});
+
 // ─── GET /dashboard/api/users/:id/shared-fields ─────────────────────────────
 
 router.get("/api/users/:id/shared-fields", async (req, res) => {

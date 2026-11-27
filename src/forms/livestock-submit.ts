@@ -5,7 +5,7 @@ import { pool, withTransaction } from '../config/db.js';
 import { formSessionService, type FormSessionRow } from '../services/form-session.service.js';
 import { domainRouter, userRepository, pendingActStore, applySideEffects } from '../services/message-pipeline.js';
 import { buildFormCommand } from './form-commands.js';
-import { findRecordSinceForm, alreadyLoadedMessage } from './form-duplicate.js';
+import { findRecordSinceForm, duplicateRowsQuestion } from './form-duplicate.js';
 import { FORM_DEFINITIONS, validateFieldValue } from './form-definitions.js';
 import { getTodayISO } from '../utils/date.js';
 import { applyLivestockExtra, type LivestockRow } from './livestock-rows.js';
@@ -46,7 +46,7 @@ export async function submitLivestockRows(
   const prefill = (session.prefill ?? {}) as { _batch?: string; _batchSize?: number };
 
   const commands: Array<{ cmd: Record<string, unknown>; expectsExpense: boolean }> = [];
-  const skipped: string[] = [];
+  const skipped: Array<{ what: string; cmd: Record<string, unknown> }> = [];
   const weightField = FORM_DEFINITIONS.add_livestock.flowFields!.find(f => f.key === 'avg_weight_kg')!;
   for (const [i, row] of rows.entries()) {
     const weight = validateFieldValue(weightField, row.extra.avgWeightRaw, getTodayISO());
@@ -58,21 +58,42 @@ export async function submitLivestockRows(
     if (!prepared.ok) {
       return rows.length > 1 ? { ...prepared, error: `Categoría ${i + 1}: ${prepared.error}` } : prepared;
     }
+    const cmd = buildFormCommand('add_livestock', prepared.data, prepared.refs) as Record<string, unknown>;
+    const extra = applyLivestockExtra(cmd, row.extra);
     const loaded = await findRecordSinceForm(token, userId, 'add_livestock', prepared.data, prepared.refs,
       i === 0 ? session.prefill as Record<string, unknown> | undefined : undefined);
     if (loaded) {
-      // Se saltea esa fila y se guardan las demás.
-      console.log(`[FORM] [INTERCEPT] fila ${i + 1} de hacienda ya se cargó por chat: se saltea`);
-      skipped.push(loaded);
+      // Esa fila no se guarda sola: se saltea y se pregunta.
+      console.log(`[FORM] [INTERCEPT] fila ${i + 1} de hacienda posible duplicado: se pregunta`);
+      skipped.push({ what: loaded, cmd });
       continue;
     }
-    const cmd = buildFormCommand('add_livestock', prepared.data, prepared.refs) as Record<string, unknown>;
-    commands.push({ cmd, ...applyLivestockExtra(cmd, row.extra) });
+    commands.push({ cmd, ...extra });
   }
 
+  // La pregunta que este formulario contesta se cierra; lo que estaba en cola
+  // detrás sigue. El batch es la cola entera, así que no deja nada.
+  // Por chat puede haber quedado delante la pregunta de precio de lo ya
+  // contestado: las preguntas del lote se sacan estén donde estén en la cola
+  // (antes volvían a dar de alta los animales que cargó el formulario).
+  const chain: Queued[] = pending
+    ? [pending as unknown as Queued, ...(pending.nextInQueue ?? [])].map(({ command, data, missing, askPrompt }) => ({ command, data, missing, askPrompt }))
+    : [];
+  const fromBatch = (q: Queued) => (q.data as Record<string, unknown> | undefined)?.__batch === prefill._batch;
+  const answered = prefill._batch
+    ? chain.some(fromBatch)
+    : !!pending && pending.command === 'add_livestock' && (!!session.had_pending || !pending.nextInQueue?.length);
+  const leftover: Queued[] = !answered ? [] : prefill._batch ? chain.filter(q => !fromBatch(q)) : chain.slice(1);
   if (commands.length === 0) {
     await formSessionService.claim(token);
-    return { ok: false, status: 409, error: alreadyLoadedMessage(skipped.join(' y ')) };
+    if (answered) {
+      pendingActStore.clear(session.phone);
+      const [first, ...rest] = leftover;
+      if (first) applySideEffects({ setPendingActivity: { ...first, ...(rest.length ? { nextInQueue: rest } : {}) } } as never, session.phone);
+      console.log(`[FORM] pending consumido por submit (en cola: ${leftover.length})`);
+    }
+    const asked = duplicateRowsQuestion(skipped);
+    return { ok: true, message: `${asked.interactive?.body}\n\nRespondé con los botones en el chat.`, response: asked };
   }
 
   const settings = await userRepository.getSettings(session.user_id as never);
@@ -107,12 +128,6 @@ export async function submitLivestockRows(
     throw err;
   }
 
-  // La pregunta que este formulario contesta se cierra; lo que estaba en cola
-  // detrás sigue. El batch es la cola entera, así que no deja nada.
-  const sameBatch = !!prefill._batch && (pending?.data as Record<string, unknown> | undefined)?.__batch === prefill._batch;
-  const answered = !!pending && (sameBatch
-    || (pending.command === 'add_livestock' && (!!session.had_pending || !pending.nextInQueue?.length)));
-  const leftover: Queued[] = answered && !prefill._batch ? pending!.nextInQueue ?? [] : [];
   if (answered) {
     pendingActStore.clear(session.phone);
     console.log(`[FORM] pending consumido por submit (en cola: ${leftover.length})`);
@@ -134,7 +149,6 @@ export async function submitLivestockRows(
   });
 
   const bodies = responses.map(r => (r.interactive?.body ?? r.messages.join('\n')).replace(PRICE_LINE, ''));
-  if (skipped.length > 0) bodies.push(`⚠️ No repetí ${skipped.join(' y ')}: ya estaba cargado desde que abriste el formulario.`);
   const response: HandlerResponse = { messages: bodies };
   const asks = [...leftover, ...priceAsks];
   if (asks.length > 0) {
@@ -149,6 +163,14 @@ export async function submitLivestockRows(
   } else if (responses.length === 1 && responses[0].interactive) {
     response.messages = [];
     response.interactive = { ...responses[0].interactive, body: bodies[0] } as HandlerResponse['interactive'];
+  }
+  // Las filas dudosas se preguntan; es la única botonera de la respuesta (la
+  // pregunta de precio, si la hay, queda como texto).
+  if (skipped.length > 0) {
+    const asked = duplicateRowsQuestion(skipped);
+    const previous = response.interactive?.body;
+    response.messages = [...bodies, ...(previous && !bodies.includes(previous) ? [previous] : [])];
+    response.interactive = asked.interactive;
   }
   console.log(`[FORM] submitted action=add_livestock filas=${commands.length} user=${userId} precios_pendientes=${priceAsks.length}`);
   return { ok: true, message: bodies.join('\n\n'), response };

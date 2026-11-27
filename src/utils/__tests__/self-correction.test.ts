@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { resolveSelfCorrection, extractCountCorrection } from '../self-correction.js';
+import { resolveSelfCorrection, extractCountCorrection, isNewHerdStatement } from '../self-correction.js';
 
 describe('extractCountCorrection', () => {
   it('the reported bug: "no, perdón, eran 8" → 8', () => {
@@ -89,5 +89,13 @@ describe('resolveSelfCorrection — conservative (must NOT fire)', () => {
   it('empty / passthrough', () => {
     expect(resolveSelfCorrection('')).toBe('');
     expect(resolveSelfCorrection('hola, cómo estás')).toBe('hola, cómo estás');
+  });
+});
+
+describe('isNewHerdStatement — respuestas de precio que nombran animales', () => {
+  it.each(['los 30 terneros a 2500 el kilo', 'los 30 terneros 2 millones', 'los 30 terneros a 1.800 x kilo', '20 vacas 18000000'])(
+    '«%s» no es un alta nueva', (msg) => { expect(isNewHerdStatement(msg)).toBe(false); });
+  it.each(['7 vacas en el 5g', 'son 7 vacas en el Sur'])('«%s» sí es un alta nueva', (msg) => {
+    expect(isNewHerdStatement(msg)).toBe(true);
   });
 });

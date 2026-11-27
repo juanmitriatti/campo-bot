@@ -67,7 +67,10 @@ vi.mock('../form-options.js', async () => {
 const findSinceMock = vi.fn();
 vi.mock('../form-duplicate.js', () => ({
   findRecordSinceForm: (...a: unknown[]) => findSinceMock(...a),
-  alreadyLoadedMessage: (what: string) => `ya cargaste ${what}`,
+  duplicateQuestion: (what: string) => ({
+    messages: [], needsConfirmation: true,
+    interactive: { type: 'buttons', body: `ya cargaste ${what}`, buttons: [{ id: 'cmdtok_x', title: 'Guardar igual' }] },
+  }),
 }));
 
 const { submitForm, lockKeyForSession, DUPLICATE_SUBMIT_MESSAGE } = await import('../form-submit.service.js');
@@ -175,13 +178,14 @@ describe('submitForm', () => {
     expect(routeCommand).not.toHaveBeenCalled();
   });
 
-  it('llega tarde y ya hay un registro igual → 409 que dice cuál, token cerrado, sin escribir', async () => {
+  it('llega tarde y parece repetido → pregunta cuál, cierra el token y no escribe', async () => {
     sessionValidate.mockResolvedValue({ ...SESSION, had_pending: true });
     pendingGet.mockReturnValue(undefined);
     mockUserRow();
     findSinceMock.mockResolvedValueOnce('una siembra en Norte');
     const r = await submitForm('tok', { plot_id: 7, crop: 'soja', event_date: '2026-08-01' });
-    expect(r).toEqual({ ok: false, status: 409, error: 'ya cargaste una siembra en Norte' });
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.message).toContain('ya cargaste una siembra en Norte');
     expect(sessionClaim).toHaveBeenCalledWith('tok');
     expect(routeCommand).not.toHaveBeenCalled();
   });
