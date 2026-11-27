@@ -29,6 +29,16 @@ export function yieldCeilingKgPerHa(crop: string | null | undefined): number {
   return CEILING_KG_PER_HA[normCrop(crop)] ?? DEFAULT_CEILING_KG_PER_HA;
 }
 
+/**
+ * "rindió 40 kg/ha" casi siempre quiso decir 40 qq/ha: menos de 200 kg/ha que,
+ * leído como quintales, es un rinde normal. Se pregunta, no se asume.
+ */
+export function looksLikeQuintalsAsKg(kgPerHa: number, crop: string | null | undefined): boolean {
+  // Solo cultivos de la tabla: alfalfa, chía o sésamo rinden de verdad < 200 kg/ha.
+  if (!crop || CEILING_KG_PER_HA[normCrop(crop)] === undefined) return false;
+  return Number.isFinite(kgPerHa) && kgPerHa > 0 && kgPerHa < 200 && kgPerHa * 100 <= yieldCeilingKgPerHa(crop);
+}
+
 /** true si el rinde por hectárea supera el techo del cultivo. */
 export function exceedsYieldCeiling(kgPerHa: number, crop: string | null | undefined): boolean {
   return Number.isFinite(kgPerHa) && kgPerHa > yieldCeilingKgPerHa(crop);

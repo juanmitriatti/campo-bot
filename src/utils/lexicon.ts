@@ -1,3 +1,4 @@
+import { parseNumberAR } from './number-ar.js';
 /**
  * Centralized conversational LEXICON — single source of truth for the synonym
  * sets that the deterministic correction/pivot/guard layer matches against.
@@ -287,6 +288,57 @@ export function numberOnlyAppearsAsArea(text: string | null | undefined, n: numb
     if (!AREA_UNIT_RE.test(after.slice(0, 12)) || !/^\s*(?:ha|has|hect)/i.test(after)) return false;
   }
   return seen > 0;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Números pegados a un animal: "compré 1000000 de vacas", "2,5 vacas". Si el
+// agente manda una cantidad que no está escrita en ningún lado, la inventó
+// (1 vaca + $1.000.000) o la redondeó (2).
+// ─────────────────────────────────────────────────────────────────────────────
+const ANIMAL_NOUN = '(?:vacas?|vaquillonas?|vaquillas?|novill\\w*|terner\\w*|toros?|torit\\w*|bueyes?|animales|cabezas)';
+const HEADS_RE = new RegExp(`(?<![\\p{L}\\d.,])(\\d+(?:[.,]\\d+)*)\\s+(?:de\\s+)?${ANIMAL_NOUN}(?![\\p{L}])`, 'giu');
+
+/** Números que el texto da como cantidad de animales. */
+export function headNumbersInText(text: string | null | undefined): number[] {
+  const out: number[] = [];
+  for (const m of (text ?? '').matchAll(HEADS_RE)) {
+    if (/\b(?:lote|corral|potrero)\s*$/i.test((text as string).slice(0, m.index))) continue;
+    const n = parseNumberAR(m[1]);
+    if (n !== null) out.push(n);
+  }
+  return out;
+}
+
+/** true si el texto da una cantidad de animales y `count` no aparece escrito en ningún lado. */
+// Cantidades escritas en letras o que se multiplican ("treinta vacas y 20
+// terneros", "2 mil novillos", "3 jaulas de 35"): ahí no se puede comparar.
+const COUNT_IN_WORDS_RE = /\b(?:dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce|trece|catorce|quince|dieci\w+|veint\w+|treinta|cuarenta|cincuenta|sesenta|setenta|ochenta|noventa|cien\w*|\w+cientos|quinientos|mil|docenas?|jaulas?|camiones|camionadas?|tandas?|lotes\s+de)\b/;
+
+export function headCountContradictsText(text: string | null | undefined, count: number): boolean {
+  if (headNumbersInText(text).length === 0 || !Number.isFinite(count)) return false;
+  if (COUNT_IN_WORDS_RE.test(normLex(text ?? ''))) return false;
+  return !((text ?? '').match(/\d+(?:[.,]\d+)*/g) ?? []).some(raw => parseNumberAR(raw) === count);
+}
+
+/** Monedas que no se registran: solo pesos y dólares (antes «euros» entraba como USD). */
+export function detectUnsupportedCurrency(text: string | null | undefined): boolean {
+  return /(?<![a-z])(?:euros?|eur)(?![a-z])|€/.test(normLex(text ?? ''));
+}
+
+/**
+ * "sembré soja, no, maíz, en el lote 2 o en el 3": un registro NUEVO que se
+ * corrige a sí mismo. No es una corrección de algo ya guardado — tratarlo así
+ * le cambió el cultivo a una siembra de trigo que no tenía nada que ver.
+ */
+export function isSelfCorrectedNewRecord(text: string | null | undefined): boolean {
+  const t = normLex(text ?? '').trim();
+  return /^(?:sembre|sembramos|fumigue|fumigamos|fertilice|fertilizamos|coseche|cosechamos)\b/.test(t)
+    && /,\s*(?:no|bah|digo|perdon)\s*,/.test(t);
+}
+
+/** "todos los meses", "por mes", "gasto fijo": pide repetición, no un plan suelto. */
+export function mentionsRecurrence(text: string | null | undefined): boolean {
+  return /\b(todos\s+los|todas\s+las|cada|por\s+(?:mes|semana|ano)|mensual\w*|bimestral\w*|trimestral\w*|semestral\w*|semanal\w*|anual\w*|cuotas?|fij[oa]s?|recurrente|automatic\w*|a\s+partir\s+de|desde|empiezo\s+a|arranco\s+a)\b/.test(normLex(text ?? ''));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -1,4 +1,5 @@
 import { normalizeToKg } from '../utils/mass-units.js';
+import { headCountContradictsText, headNumbersInText, detectUnsupportedCurrency, mentionsRecurrence, isSelfCorrectedNewRecord } from '../utils/lexicon.js';
 import { parseAnimalId } from '../utils/animal-id.js';
 import { normalizeAgentDate } from '../utils/date.js';
 import type { ParseResult, ParsedExpense, ParsedIncome, ParsedCommand, Currency } from '../types/index.js';
@@ -247,6 +248,30 @@ function inferFromProduct(product: string): { category: string; expenseType: 'in
  * Converts AgentResult (tool_use output) → ParseResult[] for backward compatibility
  * with the existing DomainRouter / handlers pipeline.
  */
+const MONEY_TOOLS = new Set([
+  'log_expense', 'log_income', 'add_stock', 'add_livestock', 'remove_livestock',
+  'log_harvest_costs', 'create_expense_template', 'set_budget',
+]);
+
+/** Motivo por el que el turno entero no se puede guardar, o null. */
+function turnRejection(calls: Array<{ toolName: string; toolInput: unknown }>, text: string): string | null {
+  if (calls.length === 0) return null;
+  if (calls.some(c => c.toolName === 'edit_last_activity') && isSelfCorrectedNewRecord(text)) {
+    return '🤔 Te corregiste dentro del mismo mensaje y no quiero cambiar algo que ya tenías cargado. No guardé nada: mandámelo una sola vez, con un cultivo y un lote.';
+  }
+  if (calls.some(c => MONEY_TOOLS.has(c.toolName)) && detectUnsupportedCurrency(text)) {
+    return '💱 Solo registro *pesos o dólares*. No guardé nada: mandámelo convertido (ej: "gasté 150 mil en repuestos").';
+  }
+  for (const c of calls) {
+    const raw = (c.toolInput as Record<string, unknown> | null)?.event_date;
+    if (typeof raw === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(raw) && normalizeAgentDate(raw) === null) {
+      const [, month, day] = raw.split('-');
+      return `📅 El ${day}/${month} no existe. No guardé nada: mandámelo de nuevo con la fecha correcta.`;
+    }
+  }
+  return null;
+}
+
 export class AgentResponseMapper {
   /** Compras/ventas de hacienda en la respuesta actual (rescate de precio solo con UNA — HAC-4). */
   private livestockPriceCallsInTurn = 0;
@@ -395,6 +420,23 @@ export class AgentResponseMapper {
         && isFuturePlanOnly(originalText)) {
       console.warn(`AI_MAPPER OVERRIDE: plan futuro registrado como hecho (${filteredCalls.map(tc => tc.toolName).join(', ')}) → create_reminder — text="${originalText.slice(0, 100)}"`);
       filteredCalls = [{ ...filteredCalls[0], toolName: 'create_reminder', toolInput: { description: originalText } }];
+    }
+
+    // "el año que viene gasto 50 mil" creaba un gasto MENSUAL: sin pedir
+    // repetición, un plan es un recordatorio.
+    if (filteredCalls.length > 0
+        && filteredCalls.every(tc => tc.toolName === 'create_expense_template')
+        && isFuturePlanOnly(originalText) && !mentionsRecurrence(originalText)) {
+      console.warn(`AI_MAPPER OVERRIDE: plan suelto como gasto recurrente → create_reminder — text="${originalText.slice(0, 100)}"`);
+      filteredCalls = [{ ...filteredCalls[0], toolName: 'create_reminder', toolInput: { description: originalText } }];
+    }
+
+    // Lo que no se puede guardar se dice, y no se guarda nada del turno: otra
+    // moneda entraba como dólares y una fecha inexistente como la de hoy.
+    const rejection = turnRejection(filteredCalls, originalText);
+    if (rejection) {
+      console.warn(`AI_MAPPER DROP: turno rechazado (${filteredCalls.map(tc => tc.toolName).join(', ')}): ${rejection.slice(0, 60)}`);
+      filteredCalls = [{ ...filteredCalls[0], toolName: 'respond_text', toolInput: { text: rejection } }];
     }
 
     // Texto conversacional + tools: hoy el texto se descarta (la confirmación
@@ -1100,8 +1142,16 @@ export class AgentResponseMapper {
     if (input.warehouse != null) cmd.warehouseName = input.warehouse;
     if (input.reason != null) cmd.reason = input.reason;
     if (input.name != null && !cmd.product) cmd.warehouseName = input.name; // create_warehouse: name → warehouseName
-    if (input.unit_price_ars != null) cmd.unit_price_ars = input.unit_price_ars;
-    if (input.unit_price_usd != null) cmd.unit_price_usd = input.unit_price_usd;
+    // El número que el texto pone delante de "vacas" es una cantidad, no un precio.
+    for (const key of ['unit_price_ars', 'unit_price_usd'] as const) {
+      if (input[key] == null) continue;
+      // Con count igual a ese número ("500 terneros a 500 dólares") es un precio real.
+      if (COUNT_TOOLS.has(toolName) && Number(input.count) !== Number(input[key]) && headNumbersInText(originalText).includes(Number(input[key]))) {
+        console.warn(`AI_MAPPER DROP: ${toolName}.${key}=${String(input[key])} es la cantidad de animales del texto, no un precio`);
+        continue;
+      }
+      cmd[key] = input[key];
+    }
 
     // Livestock price recovery: "vendí 8 vacas a 900 USD" / "compré 5 toros a
     // 1.2 palos" — Haiku only sets unit_price_* when "cada uno/una" is explicit,
@@ -1188,7 +1238,9 @@ export class AgentResponseMapper {
       // "En 5 hectáreas de ese lote tengo vacas" → count=5 (prod, 8 sep 2026).
       // Si el número aparece en el texto SOLO como superficie, no es una
       // cantidad de animales: se dropea y el handler pregunta cuántas.
-      if (COUNT_TOOLS.has(toolName) && numberOnlyAppearsAsArea(originalText, Number(input.count))) {
+      if (COUNT_TOOLS.has(toolName) && headCountContradictsText(originalText, Number(input.count))) {
+        console.warn(`AI_MAPPER DROP: ${toolName} count=${String(input.count)} no está escrito (el texto dice ${headNumbersInText(originalText).join(', ')}) — text="${originalText.slice(0, 100)}"`);
+      } else if (COUNT_TOOLS.has(toolName) && numberOnlyAppearsAsArea(originalText, Number(input.count))) {
         console.warn(`AI_MAPPER DROP: ${toolName} count=${String(input.count)} es una SUPERFICIE en el texto, no una cantidad — text="${originalText.slice(0, 100)}"`);
       } else {
         cmd.count = input.count;

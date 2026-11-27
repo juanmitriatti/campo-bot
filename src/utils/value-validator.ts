@@ -86,6 +86,20 @@ export function validateRainfallMm(mm: number | null | undefined): ValidationRes
   return { ok: true };
 }
 
+/**
+ * Dosis de FUMIGACIÓN que no es creíble (2 tn/ha de glifosato). Solo
+ * fumigación: fertilizante, cal o guano se aplican de a toneladas.
+ */
+export function isImplausibleSprayDose(quantity: number | null | undefined, unit: string | null | undefined): boolean {
+  if (quantity == null || !Number.isFinite(quantity)) return false;
+  const u = String(unit ?? '').toLowerCase().replace(/\s+/g, '');
+  if (!/\/ha|porha/.test(u)) return false;
+  if (/^(tn|t|ton\w*)(\/|por)/.test(u)) return quantity * 1000 > 200;
+  if (/^(lt|l|lts|litros?|kg|kilos?)(\/|por)/.test(u)) return quantity > 200;
+  if (/^cc(\/|por)/.test(u)) return quantity > 20_000;
+  return false;
+}
+
 /** Validates hectares is positive and within bounds. */
 export function validateHectares(ha: number | null | undefined): ValidationResult {
   if (ha == null) return { ok: true };

@@ -351,7 +351,21 @@ function shouldStripPlot(
 
   if (!options.userPlots || options.userPlots.length === 0) return false;
   const isKnown = options.userPlots.some(n => normalize(n) === normalize(trimmed));
-  if (!isKnown) return true; // no es un lote del usuario → invención → dropear
+  if (!isKnown) {
+    // Un lote que no existe pero el usuario ESCRIBIÓ ("lote 22") no es invención
+    // del agente: se conserva y el handler dice que no existe. Dropearlo mandaba
+    // la siembra al lote del contexto.
+    const name = normalize(trimmed).replace(/^(?:lote|potrero)\s+/, '');
+    const text = normalize(ctx.originalText);
+    // "el lote 5 de novillos" es una tanda de hacienda, no un potrero.
+    const herdBatch = /\blote\s+\S+\s+de\s+(?:novill|terner|vaca|vaquillon|toro)/.test(text);
+    const written = !herdBatch && (wholeWordInText(`lote ${name}`, text) || wholeWordInText(`potrero ${name}`, text));
+    if (written) {
+      console.log(`AI_VALIDATOR KEEP (lote inexistente escrito por el usuario): plot="${trimmed}"`);
+      return false;
+    }
+    return true; // no es un lote del usuario → invención → dropear
+  }
   if (mentionedInText(trimmed, ctx.originalText, options.userPlots)) return false;
   // Respuesta corta a una pregunta del bot ("maíz" tras "¿qué cultivo sembraste
   // en el Sur?"): el lote lo dijo el usuario UN turno antes ("sembré en el

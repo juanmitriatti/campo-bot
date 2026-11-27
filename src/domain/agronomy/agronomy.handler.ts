@@ -29,7 +29,8 @@ import { formatHistoryResponse } from './plot-query.service.js';
 import { formatDateAR, toISODateAR } from '../../utils/date.js';
 import { inferGrainUnit } from '../../utils/mass-units.js';
 import { formatQuantityHuman, formatTn } from '../../utils/format-quantity.js';
-import { exceedsYieldCeiling, yieldCeilingKgPerHa } from '../../utils/yield-ceiling.js';
+import { exceedsYieldCeiling, yieldCeilingKgPerHa, looksLikeQuintalsAsKg } from '../../utils/yield-ceiling.js';
+import { isImplausibleSprayDose } from '../../utils/value-validator.js';
 import { localidadLookup, type Localidad } from '../../services/localidad-lookup.service.js';
 import { callbackPayloadStore } from '../../middleware/callback-payload-store.js';
 import { isPlaceholder } from '../../utils/guards.js';
@@ -2762,6 +2763,31 @@ export class AgronomyHandler {
             computedKgPerHa = Math.round(yieldKgRaw / areaHa);
           }
         }
+        // "rindió 40 kg/ha": casi siempre eran 40 qq/ha. Se pregunta antes de guardar.
+        if (yieldKgPerHa != null && looksLikeQuintalsAsKg(yieldKgPerHa, crop) && cmd.__yieldConfirmed !== true) {
+          console.warn(`[INTERCEPT] harvest_crop: ${yieldKgPerHa} kg/ha de ${crop} parece quintales plot=${plotResult.plotId}`);
+          if ((cmd as ParsedCommand & { _bulkMode?: boolean })._bulkMode === true) {
+            const note = `rinde no cargado: ${yieldKgPerHa} kg/ha parece ser en quintales`;
+            yieldNotes = yieldNotes ? `${yieldNotes} · ${note}` : note;
+            yieldKg = null;
+            computedKgPerHa = null;
+          } else {
+            const asQq = { ...cmd, yieldKgPerHa: yieldKgPerHa * 100, yieldKg: null, __yieldConfirmed: true };
+            return {
+              messages: [],
+              needsConfirmation: true,
+              interactive: {
+                type: 'buttons' as const,
+                body: `⚠️ *${yieldKgPerHa} kg/ha* de ${crop} en *${plotLabel}* es muy poco. ¿Eran *${yieldKgPerHa} quintales* por hectárea?`,
+                buttons: [
+                  { id: `cmdtok_${callbackPayloadStore.set(JSON.stringify(asQq))}`, title: `Fueron ${yieldKgPerHa} qq/ha` },
+                  { id: `cmdtok_${callbackPayloadStore.set(JSON.stringify({ ...cmd, __yieldConfirmed: true }))}`, title: `Sí, ${yieldKgPerHa} kg/ha` },
+                  { id: 'cancel_action', title: 'Cancelar' },
+                ],
+              },
+            };
+          }
+        }
         // Rinde por encima del techo del cultivo ("42 tn/ha" de soja, un kg/ha
         // tipeado como qq/ha): casi seguro un error de unidades. No se guarda sin
         // preguntar (auditoría de datos, nov 2026). Botones: confirmar o corregir.
@@ -3995,6 +4021,34 @@ export class AgronomyHandler {
           }
         }
 
+        // "2 tn/ha de glifosato": se pregunta antes de guardar (en un mensaje con
+        // varias acciones no se frena: se guarda sin la dosis y se avisa).
+        let doseNote: string | null = null;
+        if (cmd.command === 'log_spraying' && cmd.__doseConfirmed !== true
+            // "250 lt/ha de caldo" es volumen de aplicación, no dosis de producto.
+            && !/\b(caldo|agua)\b/i.test(String(cmd.originalText ?? ''))
+            && isImplausibleSprayDose(cmd.quantity as number | null, cmd.unit as string | null)) {
+          const dose = `${Number(cmd.quantity).toLocaleString('es-AR')} ${cmd.unit}`;
+          console.warn(`[INTERCEPT] log_spraying: dosis ${dose} poco creíble`);
+          if ((cmd as ParsedCommand & { _bulkMode?: boolean })._bulkMode === true) {
+            doseNote = `⚠️ No cargué la dosis: *${dose}* parece un error.`;
+            cmd = { ...cmd, quantity: null, unit: null };
+          } else {
+            return {
+              messages: [],
+              needsConfirmation: true,
+              interactive: {
+                type: 'buttons' as const,
+                body: `⚠️ *${dose}* es muchísimo para una fumigación. ¿Está bien? Si fue un error de unidades, tocá Corregir y mandámelo de nuevo.`,
+                buttons: [
+                  { id: `cmdtok_${callbackPayloadStore.set(JSON.stringify({ ...cmd, __doseConfirmed: true }))}`, title: 'Sí, es correcto' },
+                  { id: (cmd as Record<string, unknown>).__fromForm ? 'form_open_activity' : 'cancel_action', title: 'Corregir' },
+                ],
+              },
+            };
+          }
+        }
+
         const resolved = await this.plotDiscovery.resolveFromNames(
           userId,
           cmd.fieldName as string | null,
@@ -4035,7 +4089,7 @@ export class AgronomyHandler {
 
         const plotLabel = formatPlotLocation(plotResult.fieldName, plotResult.plotName);
 
-        const confirmation = formatActivityConfirmation(eventType, plotLabel, {
+        let confirmation = formatActivityConfirmation(eventType, plotLabel, {
           product: cmd.product as string | null,
           productType: cmd.productType as string | null,
           quantity: cmd.quantity as number | null,
@@ -4045,6 +4099,9 @@ export class AgronomyHandler {
           eventDate: cmd.eventDate as Date | null,
           notes: (cmd.notes as string | null | undefined) ?? null,
         });
+        if (doseNote) confirmation += `
+
+${doseNote}`;
 
         // Suggest stock deduction for spraying/fertilization with product
         if ((eventType === 'spraying' || eventType === 'fertilization') && cmd.product && savedEvent?.id) {
@@ -4470,6 +4527,14 @@ export class AgronomyHandler {
           }
           newPlotId = newResolved.plotId;
           newPlotLabel = formatPlotLocation(newResolved.fieldName, newResolved.plotName);
+        }
+
+        // "maíz → maíz": no había nada que corregir y se anunciaba como corregido.
+        if (newCrop && lastEvent.crop && newCrop.toLowerCase() === String(lastEvent.crop).toLowerCase()
+            && !newPlotName && !newFieldName && !newUnit && !clearLot && !newDate && !(newQuantity != null && newQuantity > 0)
+            && newHectares == null && !wantsPartialArea) {
+          console.log(`[INTERCEPT] edit_last_activity sin cambios: ya era ${newCrop}`);
+          return { messages: [`Ya figuraba como *${lastEvent.crop}*, no cambié nada.`] };
         }
 
         // Build extra fields to update
