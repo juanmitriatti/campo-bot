@@ -514,6 +514,8 @@ export interface HandlerResponse {
    * (cierra con el mensaje) en vez de "no lo pude guardar".
    */
   alreadyRecorded?: boolean;
+  /** No se guardó nada: el valor es improbable y los botones preguntan. */
+  needsConfirmation?: boolean;
   attachment?: AttachmentPayload;
   interactive?: InteractiveMessage;
   suggestionKey?: string;

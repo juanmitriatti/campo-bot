@@ -10,6 +10,7 @@
 // extractAmount), categorías (detectarCategoria*), cultivos
 // (extractCropFromText), fechas relativas (relative-dates), nombres de
 // entidades (entity-matcher, invariante 3) y sinónimos (lexicon, invariante 4).
+import { parseNumberAR } from '../../utils/number-ar.js';
 import { normalizarMonto, extractAmount, detectarCategoria, detectarCategoriaIngreso } from '../../utils/parser.js';
 import { extractCropFromText } from '../../utils/crops.js';
 import { resolveRelativeDate } from '../../utils/relative-dates.js';
@@ -121,13 +122,7 @@ function extractDate(
 }
 
 const BARE_NUMBER_RE = /^\s*(\d+(?:[.,]\d+)*)\s*$/;
-function parseLooseNumber(s: string): number | null {
-  const t = s.trim();
-  // "28.500" / "1.250.000" = miles; "2,5" / "2.5" = decimal.
-  if (/^\d{1,3}(\.\d{3})+$/.test(t)) return Number(t.replace(/\./g, ''));
-  const n = Number(t.replace(',', '.'));
-  return Number.isFinite(n) ? n : null;
-}
+const parseLooseNumber = (s: string): number | null => parseNumberAR(s);
 
 const BARE_MONEY_RE = /^\s*(?:u\$s|us\$|u\$d|\$)?\s*\d[\d.,]*\s*(?:mil|k|lucas?|palos?|millon(?:es)?|m)?\s*(?:de\s+)?(?:pesos?|d[oó]lares?|usd|ars)?\s*$/i;
 const DATE_TOKEN_RE = /\b\d{1,2}\/\d{1,2}(?:\/\d{2,4})?\b/g;

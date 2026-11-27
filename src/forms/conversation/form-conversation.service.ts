@@ -238,7 +238,7 @@ function applyCandidates(s: Session, cands: Record<string, unknown>): ApplyResul
       const f = fieldByKey(s.def, base);
       if (!f?.allowOther) continue;
       if (raw === null) { delete v[key]; continue; }
-      const text = String(raw).trim().slice(0, 60);
+      const text = String(raw).trim().slice(0, f.maxLength ?? 60);
       if (!text) continue;
       v[key] = text;
       delete v[base];

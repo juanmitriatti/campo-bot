@@ -5,6 +5,8 @@ import { pool, withTransaction } from '../config/db.js';
 import { formSessionService, type FormSessionRow } from '../services/form-session.service.js';
 import { domainRouter, userRepository, pendingActStore, applySideEffects } from '../services/message-pipeline.js';
 import { buildFormCommand } from './form-commands.js';
+import { FORM_DEFINITIONS, validateFieldValue } from './form-definitions.js';
+import { getTodayISO } from '../utils/date.js';
 import { applyLivestockExtra, type LivestockRow } from './livestock-rows.js';
 import type { PreparedSubmission } from './form-submit.service.js';
 import type { PendingActivity } from '../middleware/pending-activities.js';
@@ -53,7 +55,13 @@ export async function submitLivestockRows(
   }
 
   const commands: Array<{ cmd: Record<string, unknown>; expectsExpense: boolean }> = [];
+  const weightField = FORM_DEFINITIONS.add_livestock.flowFields!.find(f => f.key === 'avg_weight_kg')!;
   for (const [i, row] of rows.entries()) {
+    const weight = validateFieldValue(weightField, row.extra.avgWeightRaw, getTodayISO());
+    if (weight.error) {
+      console.log(`[FORM] rejected: fila ${i + 1} de hacienda con peso inválido`);
+      return { ok: false, status: 422, error: rows.length > 1 ? `Categoría ${i + 1}: ${weight.error}` : weight.error };
+    }
     const prepared = await prepare(row.payload);
     if (!prepared.ok) {
       return rows.length > 1 ? { ...prepared, error: `Categoría ${i + 1}: ${prepared.error}` } : prepared;

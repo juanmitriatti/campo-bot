@@ -2,6 +2,7 @@
 // de cada fila son las del formulario base: acá solo se parte la respuesta en
 // filas, se traduce la forma de precio y se arma la precarga.
 import type { FormOptions } from './form-options.js';
+import { parseNumberAR } from '../utils/number-ar.js';
 
 export const LIVESTOCK_ROWS_GROUP = 'animals';
 export const MAX_LIVESTOCK_ROWS = 5;
@@ -9,13 +10,17 @@ export const MAX_LIVESTOCK_ROWS = 5;
 const ROW_KEYS = ['category', 'count', 'breed', 'unit_price', 'price_mode', 'avg_weight_kg'] as const;
 const SHARED_KEYS = ['location', 'event_date', 'currency', 'notes'] as const;
 
-export interface LivestockExtra { origin: string; priceMode: string; avgWeightKg: number | null }
+export interface LivestockExtra {
+  origin: string; priceMode: string; avgWeightKg: number | null;
+  /** Lo que escribió, sin interpretar: el submit lo valida (antes un peso ilegible se perdía callado). */
+  avgWeightRaw?: unknown;
+}
 export interface LivestockRow { payload: Record<string, unknown>; extra: LivestockExtra }
 
 const filled = (v: unknown): boolean => v !== undefined && v !== null && String(v).trim() !== '';
 const positive = (v: unknown): number | null => {
-  const n = Number(v);
-  return filled(v) && Number.isFinite(n) && n > 0 ? n : null;
+  const n = parseNumberAR(v);
+  return n !== null && n > 0 ? n : null;
 };
 
 /** Invernada se compra por kilo vivo; vientres y toros, por cabeza. */
@@ -34,7 +39,7 @@ export function splitLivestockRows(payload: Record<string, unknown>): LivestockR
   const origin = String(payload.origin ?? '');
   return [payload, ...extraRows].map(row => ({
     payload: { ...shared, ...Object.fromEntries(['category', 'count', 'breed', 'unit_price'].filter(k => k in row).map(k => [k, row[k]])) },
-    extra: { origin, priceMode: String(row.price_mode || 'head'), avgWeightKg: positive(row.avg_weight_kg) },
+    extra: { origin, priceMode: String(row.price_mode || 'head'), avgWeightKg: positive(row.avg_weight_kg), avgWeightRaw: row.avg_weight_kg },
   }));
 }
 

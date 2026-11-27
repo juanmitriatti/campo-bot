@@ -116,17 +116,15 @@ export default function FormPage() {
         payload[`${f.key}_other`] = (others[f.key] ?? '').trim();
         delete payload[f.key];
       }
-      if (f.type === 'number' && typeof payload[f.key] === 'string') {
-        payload[f.key] = payload[f.key] === '' ? undefined : Number(payload[f.key]);
-      }
     }
     const cleanLoads = loads
       .filter(l => l.driver_name?.trim() || l.weight_kg?.trim())
       .map(l => ({
         driver_name: l.driver_name?.trim(),
-        weight_kg: l.weight_kg ? Number(l.weight_kg) : undefined,
+        // Los números viajan como se escribieron: "28.500" lo interpreta el server.
+        weight_kg: l.weight_kg?.trim() || undefined,
         destinatario: l.destinatario?.trim() || undefined,
-        humidity_pct: l.humidity_pct ? Number(l.humidity_pct) : undefined,
+        humidity_pct: l.humidity_pct?.trim() || undefined,
       }));
     if (cleanLoads.length > 0) payload.loads = cleanLoads;
     try {
@@ -198,11 +196,11 @@ export default function FormPage() {
                   onChange={e => set(f.key, e.target.value)}
                   className={inputCls} />
               )}
+              {/* Texto y no type="number": el navegador leía "1.500" como 1,5. */}
               {f.type === 'number' && (
-                <input type="number" inputMode="decimal" required={f.required}
-                  min={f.min} max={f.max} step="any"
+                <input type="text" inputMode="decimal" required={f.required}
                   value={values[f.key] === undefined || values[f.key] === null ? '' : String(values[f.key])}
-                  onChange={e => set(f.key, e.target.value === '' ? undefined : Number(e.target.value))}
+                  onChange={e => set(f.key, e.target.value === '' ? undefined : e.target.value)}
                   className="w-full rounded-lg border-gray-300 border p-3" />
               )}
               {f.type === 'text' && (
@@ -256,13 +254,13 @@ function LoadsEditor({ def, loads, setLoads }: {
           <input type="text" placeholder="Chofer *" value={l.driver_name ?? ''}
             onChange={e => update(i, 'driver_name', e.target.value)}
             className="w-full rounded border-gray-300 border p-2 text-sm" />
-          <input type="number" inputMode="numeric" placeholder="Peso (kg) *" value={l.weight_kg ?? ''}
+          <input type="text" inputMode="decimal" placeholder="Peso (kg) *" value={l.weight_kg ?? ''}
             onChange={e => update(i, 'weight_kg', e.target.value)}
             className="w-full rounded border-gray-300 border p-2 text-sm" />
           <input type="text" placeholder="Destinatario (opcional)" value={l.destinatario ?? ''}
             onChange={e => update(i, 'destinatario', e.target.value)}
             className="w-full rounded border-gray-300 border p-2 text-sm" />
-          <input type="number" inputMode="decimal" placeholder="Humedad % (opcional)" value={l.humidity_pct ?? ''}
+          <input type="text" inputMode="decimal" placeholder="Humedad % (opcional)" value={l.humidity_pct ?? ''}
             onChange={e => update(i, 'humidity_pct', e.target.value)}
             className="w-full rounded border-gray-300 border p-2 text-sm" />
         </div>

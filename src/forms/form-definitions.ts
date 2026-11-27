@@ -8,6 +8,8 @@
 // formulario = una entrada acá + su builder de comando en form-commands.ts +
 // el handler que lo ofrece. Nada más.
 import type { FormAction } from '../types/index.js';
+import { parseNumberAR } from '../utils/number-ar.js';
+import { LIMITS } from '../utils/value-validator.js';
 
 export type { FormAction };
 
@@ -40,7 +42,15 @@ export interface FormField {
   allowOther?: boolean;
   min?: number;
   max?: number;
+  /** Solo enteros (cabezas). */
+  integer?: boolean;
+  /** Se agrega al error de min/max: cómo se escribe ese dato. */
+  rangeHint?: string;
+  /** Texto (o "otro" de un select): largo de su columna en la base. */
+  maxLength?: number;
   noFuture?: boolean;
+  /** Fechas: no más viejas que estos años. */
+  maxAgeYears?: number;
   fields?: FormField[];
   maxItems?: number;
   /** WhatsApp Flows: select rendido como botones de opción. */
@@ -94,13 +104,26 @@ export const ACTIVITY_TYPE_OPTIONS: FormOption[] = [
 export const DOSE_UNIT_OPTIONS: FormOption[] = ['lt/ha', 'kg/ha', 'cc/ha', 'lt', 'kg', 'mm']
   .map(u => ({ id: u, title: u }));
 
-const DATE_FIELD: FormField = { key: 'event_date', label: 'Fecha', type: 'date', required: true, noFuture: true };
+/** Máximo por unidad. Generosos: guano o cal se aplican de a toneladas por ha. */
+const MAX_DOSE_BY_UNIT: Record<string, number> = {
+  'lt/ha': 1_000, 'kg/ha': 40_000, 'cc/ha': 20_000, lt: 1_000_000, kg: 10_000_000, mm: 500,
+};
+
+// Techos de cordura: lo que pasa de acá es imposible, no "raro" (lo raro se
+// pregunta, como el rinde sobre el techo del cultivo).
+const MAX_HECTARES = 100_000;
+const MAX_MONEY = LIMITS.amount_max;
+const MAX_HEADS = LIMITS.livestock_max_count;
+
+const DATE_FIELD: FormField = { key: 'event_date', label: 'Fecha', type: 'date', required: true, noFuture: true, maxAgeYears: 10 };
+const NOTES_FIELD: FormField = { key: 'notes', label: 'Observaciones', type: 'text', required: false, maxLength: 500 };
+const COUNT_FIELD: FormField = { key: 'count', label: 'Cabezas', type: 'number', required: true, min: 1, max: MAX_HEADS, integer: true };
 
 const PRICE_MODE_FIELD: FormField = {
   key: 'price_mode', label: 'Precio es', type: 'select', required: false,
   options: [{ id: 'head', title: 'Por cabeza' }, { id: 'kg', title: 'Por kg vivo' }, { id: 'total', title: 'Total' }],
 };
-const ROW_PRICE_FIELD: FormField = { key: 'unit_price', label: 'Precio', type: 'number', required: false, min: 0.01 };
+const ROW_PRICE_FIELD: FormField = { key: 'unit_price', label: 'Precio', type: 'number', required: false, min: 0.01, max: MAX_MONEY };
 const AVG_WEIGHT_FIELD: FormField = { key: 'avg_weight_kg', label: 'Kg promedio', type: 'number', required: false, min: 1, max: 1500 };
 
 /** Flow de alta de hacienda: hasta 5 categorías, un lote para todo, precio opcional. */
@@ -110,9 +133,9 @@ const LIVESTOCK_FLOW_FIELDS: FormField[] = [
     options: [{ id: 'compra', title: 'Compra' }, { id: 'existente', title: 'Ya los tenía' }, { id: 'otro', title: 'Otro ingreso' }],
   },
   { key: 'location', label: 'Lote o corral', type: 'select', required: true, optionsSource: 'livestock_locations' },
-  { key: 'event_date', label: 'Fecha', type: 'date', required: true, noFuture: true },
+  DATE_FIELD,
   { key: 'category', label: 'Categoría', type: 'select', required: true, optionsSource: 'livestock_categories' },
-  { key: 'count', label: 'Cabezas', type: 'number', required: true, min: 1 },
+  COUNT_FIELD,
   { key: 'breed', label: 'Raza', type: 'select', required: false, optionsSource: 'breeds' },
   PRICE_MODE_FIELD,
   ROW_PRICE_FIELD,
@@ -122,7 +145,7 @@ const LIVESTOCK_FLOW_FIELDS: FormField[] = [
     toggle: { label: 'Más categorías', noun: 'Categoría', first: '➕ Agregar otra categoría', next: '➕ Agregar otra categoría' },
     fields: [
       { key: 'category', label: 'Categoría', type: 'select', required: false, optionsSource: 'livestock_categories' },
-      { key: 'count', label: 'Cabezas', type: 'number', required: false, min: 1 },
+      { ...COUNT_FIELD, required: false },
       { key: 'breed', label: 'Raza', type: 'select', required: false, optionsSource: 'breeds' },
       PRICE_MODE_FIELD,
       ROW_PRICE_FIELD,
@@ -130,7 +153,7 @@ const LIVESTOCK_FLOW_FIELDS: FormField[] = [
     ],
   },
   { key: 'currency', label: 'Moneda del precio', type: 'select', required: false, options: CURRENCY_OPTIONS },
-  { key: 'notes', label: 'Observaciones', type: 'text', required: false },
+  NOTES_FIELD,
 ];
 
 /** La definición tal como la ve el Flow de WhatsApp. */
@@ -146,10 +169,10 @@ export const FORM_DEFINITIONS: Record<FormAction, FormDefinition> = {
     settingKey: 'WHATSAPP_FLOW_ID_SOW',
     fields: [
       { key: 'plot_id', label: 'Lote', type: 'select', required: true, optionsSource: 'plots' },
-      { key: 'crop', label: 'Cultivo', type: 'select', required: true, optionsSource: 'crops', allowOther: true },
+      { key: 'crop', label: 'Cultivo', type: 'select', required: true, optionsSource: 'crops', allowOther: true, maxLength: 50 },
       DATE_FIELD,
-      { key: 'hectares', label: 'Hectáreas sembradas', type: 'number', required: false, min: 0.01, help: 'Solo si sembraste una parte del lote' },
-      { key: 'variety', label: 'Variedad', type: 'text', required: false, help: 'Ej: DM 4670' },
+      { key: 'hectares', label: 'Hectáreas sembradas', type: 'number', required: false, min: 0.01, max: MAX_HECTARES, help: 'Solo si sembraste una parte del lote' },
+      { key: 'variety', label: 'Variedad', type: 'text', required: false, maxLength: 100, help: 'Ej: DM 4670' },
     ],
   },
   harvest_crop: {
@@ -166,20 +189,20 @@ export const FORM_DEFINITIONS: Record<FormAction, FormDefinition> = {
     fields: [
       { key: 'plot_id', label: 'Lote', type: 'select', required: true, optionsSource: 'plots' },
       DATE_FIELD,
-      { key: 'yield_kg_per_ha', label: 'Rinde (kg/ha)', type: 'number', required: false, min: 1, max: 30000, help: 'En kg por hectárea (1 qq = 100 kg). Ej: 42 qq/ha = 4200' },
-      { key: 'yield_kg', label: 'Rinde total (kg)', type: 'number', required: false, min: 1 },
+      { key: 'yield_kg_per_ha', label: 'Rinde (kg/ha)', type: 'number', required: false, min: 100, max: 30000, rangeHint: 'Va en kilos por hectárea: 42 qq/ha = 4200.', help: 'En kg por hectárea (1 qq = 100 kg). Ej: 42 qq/ha = 4200' },
+      { key: 'yield_kg', label: 'Rinde total (kg)', type: 'number', required: false, min: 100, max: 100_000_000, rangeHint: 'Va en kilos: 130 toneladas = 130000.' },
       // Avance parcial: sin esto "42 qq/ha" se multiplicaba por TODO el lote
       // aunque se hubieran cosechado 40 de 100 ha, y una segunda cosecha pisaba
       // el rinde en vez de sumar (el handler acumula solo si llegan las ha).
-      { key: 'hectares', label: 'Hectáreas cosechadas', type: 'number', required: false, min: 0.01, help: 'Solo si cosechaste una parte del lote' },
+      { key: 'hectares', label: 'Hectáreas cosechadas', type: 'number', required: false, min: 0.01, max: MAX_HECTARES, help: 'Solo si cosechaste una parte del lote' },
       { key: 'humidity_pct', label: 'Humedad (%)', type: 'number', required: false, min: 0, max: 50 },
       {
         key: 'loads', label: 'Cargas por camión', type: 'group', required: false, maxItems: 20,
         toggle: { label: 'Camiones', noun: 'Camión', first: 'Cargar camiones', next: '➕ Agregar otro camión' },
         fields: [
-          { key: 'driver_name', label: 'Chofer', type: 'text', required: true },
-          { key: 'weight_kg', label: 'Peso (kg)', type: 'number', required: true, min: 1 },
-          { key: 'destinatario', label: 'Destinatario', type: 'text', required: false },
+          { key: 'driver_name', label: 'Chofer', type: 'text', required: true, maxLength: 100 },
+          { key: 'weight_kg', label: 'Peso (kg)', type: 'number', required: true, min: 1000, max: 60_000, rangeHint: 'Va el peso de UN camión en kilos: 28 toneladas = 28000.' },
+          { key: 'destinatario', label: 'Destinatario', type: 'text', required: false, maxLength: 100 },
           { key: 'humidity_pct', label: 'Humedad (%)', type: 'number', required: false, min: 0, max: 50 },
         ],
       },
@@ -193,12 +216,12 @@ export const FORM_DEFINITIONS: Record<FormAction, FormDefinition> = {
     label: 'el gasto',
     settingKey: 'WHATSAPP_FLOW_ID_EXPENSE',
     fields: [
-      { key: 'amount', label: 'Monto', type: 'number', required: true, min: 0.01 },
+      { key: 'amount', label: 'Monto', type: 'number', required: true, min: 0.01, max: MAX_MONEY },
       { key: 'currency', label: 'Moneda', type: 'select', required: true, options: CURRENCY_OPTIONS },
-      { key: 'category', label: 'Categoría', type: 'select', required: true, optionsSource: 'expense_categories', allowOther: true },
+      { key: 'category', label: 'Categoría', type: 'select', required: true, optionsSource: 'expense_categories', allowOther: true, maxLength: 50 },
       { key: 'location', label: 'Lote o campo', type: 'select', required: false, optionsSource: 'locations', help: 'Dejalo vacío si no corresponde a un lote' },
       DATE_FIELD,
-      { key: 'description', label: 'Detalle', type: 'text', required: false, help: 'Ej: 200 lt de gasoil en YPF' },
+      { key: 'description', label: 'Detalle', type: 'text', required: false, maxLength: 500, help: 'Ej: 200 lt de gasoil en YPF' },
     ],
   },
   log_income: {
@@ -207,17 +230,17 @@ export const FORM_DEFINITIONS: Record<FormAction, FormDefinition> = {
     label: 'el ingreso',
     settingKey: 'WHATSAPP_FLOW_ID_INCOME',
     fields: [
-      { key: 'amount', label: 'Monto', type: 'number', required: true, min: 0.01 },
+      { key: 'amount', label: 'Monto', type: 'number', required: true, min: 0.01, max: MAX_MONEY },
       { key: 'currency', label: 'Moneda', type: 'select', required: true, options: CURRENCY_OPTIONS },
-      { key: 'category', label: 'Categoría', type: 'select', required: true, optionsSource: 'income_categories', allowOther: true },
+      { key: 'category', label: 'Categoría', type: 'select', required: true, optionsSource: 'income_categories', allowOther: true, maxLength: 50 },
       // Venta de grano: sin comprador ni cantidad la venta no entra al saldo por
       // acopio ("cuánta soja me queda en Cargill"). Van ANTES de la ubicación:
       // con comprador el lote se deduce de la campaña y ni se pregunta.
-      { key: 'buyer', label: 'Comprador', type: 'text', required: false, help: 'Solo en ventas de grano. Ej: Cargill' },
-      { key: 'quantity_tn', label: 'Toneladas vendidas', type: 'number', required: false, min: 0.001, help: 'Solo en ventas de grano' },
+      { key: 'buyer', label: 'Comprador', type: 'text', required: false, maxLength: 100, help: 'Solo en ventas de grano. Ej: Cargill' },
+      { key: 'quantity_tn', label: 'Toneladas vendidas', type: 'number', required: false, min: 0.001, max: 100_000, rangeHint: 'Va en toneladas, no en kilos.', help: 'Solo en ventas de grano' },
       { key: 'location', label: 'Lote o campo', type: 'select', required: false, optionsSource: 'locations', help: 'Dejalo vacío si no corresponde a un lote' },
       DATE_FIELD,
-      { key: 'description', label: 'Detalle', type: 'text', required: false, help: 'Ej: 30 tn de soja a Cargill' },
+      { key: 'description', label: 'Detalle', type: 'text', required: false, maxLength: 500, help: 'Ej: 30 tn de soja a Cargill' },
     ],
   },
   log_activity: {
@@ -228,11 +251,11 @@ export const FORM_DEFINITIONS: Record<FormAction, FormDefinition> = {
     fields: [
       { key: 'activity_type', label: 'Labor', type: 'select', required: true, options: ACTIVITY_TYPE_OPTIONS },
       { key: 'plot_id', label: 'Lote', type: 'select', required: true, optionsSource: 'plots' },
-      { key: 'product', label: 'Producto o implemento', flowLabel: 'Producto/implemento', type: 'text',required: false, help: 'Obligatorio salvo en riego. Ej: glifosato, urea, rastra' },
-      { key: 'quantity', label: 'Dosis o cantidad', type: 'number', required: false, min: 0.001 },
+      { key: 'product', label: 'Producto o implemento', flowLabel: 'Producto/implemento', type: 'text',required: false, maxLength: 150, help: 'Obligatorio salvo en riego. Ej: glifosato, urea, rastra' },
+      { key: 'quantity', label: 'Dosis o cantidad', type: 'number', required: false, min: 0.001, max: 10_000_000 },
       { key: 'unit', label: 'Unidad', type: 'select', required: false, options: DOSE_UNIT_OPTIONS },
       DATE_FIELD,
-      { key: 'notes', label: 'Observaciones', type: 'text', required: false },
+      NOTES_FIELD,
     ],
     crossCheck: d => {
       const errs: FormIssue[] = [];
@@ -242,6 +265,10 @@ export const FORM_DEFINITIONS: Record<FormAction, FormDefinition> = {
       }
       if (t === 'irrigation' && d.quantity === undefined) errs.push({ field: 'quantity', message: 'Indicá los mm de riego en Dosis o cantidad.' });
       if (d.quantity !== undefined && !d.unit) errs.push({ field: 'unit', message: 'Indicá la unidad de la dosis.' });
+      const cap = t === 'irrigation' ? MAX_DOSE_BY_UNIT.mm : MAX_DOSE_BY_UNIT[String(d.unit ?? '')];
+      if (typeof d.quantity === 'number' && cap !== undefined && d.quantity > cap) {
+        errs.push({ field: 'quantity', message: `Dosis o cantidad: ${d.quantity} ${d.unit ?? ''} es demasiado (máximo ${cap}). Revisá el número y la unidad.` });
+      }
       return errs;
     },
   },
@@ -253,13 +280,13 @@ export const FORM_DEFINITIONS: Record<FormAction, FormDefinition> = {
     flowFields: LIVESTOCK_FLOW_FIELDS,
     fields: [
       { key: 'category', label: 'Categoría', type: 'select', required: true, optionsSource: 'livestock_categories' },
-      { key: 'count', label: 'Cabezas', type: 'number', required: true, min: 1 },
+      COUNT_FIELD,
       { key: 'breed', label: 'Raza', type: 'select', required: false, optionsSource: 'breeds' },
       { key: 'location', label: 'Lote o corral', type: 'select', required: true, optionsSource: 'livestock_locations' },
-      { key: 'unit_price', label: 'Precio por cabeza', type: 'number', required: false, min: 0.01, help: 'Si fue una compra, genera el gasto vinculado' },
+      { key: 'unit_price', label: 'Precio por cabeza', type: 'number', required: false, min: 0.01, max: MAX_MONEY, help: 'Si fue una compra, genera el gasto vinculado' },
       { key: 'currency', label: 'Moneda del precio', type: 'select', required: false, options: CURRENCY_OPTIONS },
       DATE_FIELD,
-      { key: 'notes', label: 'Observaciones', type: 'text', required: false },
+      NOTES_FIELD,
     ],
   },
 };
@@ -295,6 +322,10 @@ export function validateFieldValue(
     const d = new Date(s + 'T00:00:00Z');
     if (Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== s) return { error: `${label ?? f.label} inválida.` };
     if (f.noFuture && s > todayISO) return { error: `${label ?? f.label} no puede ser futura.` };
+    if (f.maxAgeYears !== undefined) {
+      const oldest = `${Number(todayISO.slice(0, 4)) - f.maxAgeYears}${todayISO.slice(4)}`;
+      if (s < oldest) return { error: `${label ?? f.label} es de hace más de ${f.maxAgeYears} años. Revisá el año.` };
+    }
     return { value: s };
   }
   const value = validateScalar(f, raw, errors, label);
@@ -315,10 +346,13 @@ function validateScalar(f: FormField, raw: unknown, errors: string[], label?: st
     return undefined;
   }
   if (f.type === 'number') {
-    const n = Number(raw);
-    if (!Number.isFinite(n)) { errors.push(`${name} debe ser un número.`); return undefined; }
-    if (f.min !== undefined && n < f.min) { errors.push(`${name} debe ser al menos ${f.min}.`); return undefined; }
-    if (f.max !== undefined && n > f.max) { errors.push(`${name} debe ser como máximo ${f.max}.`); return undefined; }
+    const n = parseNumberAR(raw);
+    const hint = f.rangeHint ? ` ${f.rangeHint}` : '';
+    const ar = (v: number) => v.toLocaleString('es-AR', { maximumFractionDigits: 3 });
+    if (n === null) { errors.push(`${name} debe ser un número.`); return undefined; }
+    if (f.integer && !Number.isInteger(n)) { errors.push(`${name} debe ser un número entero.`); return undefined; }
+    if (f.min !== undefined && n < f.min) { errors.push(`${name} debe ser al menos ${ar(f.min)}.${hint}`); return undefined; }
+    if (f.max !== undefined && n > f.max) { errors.push(`${name} debe ser como máximo ${ar(f.max)}.${hint}`); return undefined; }
     return n;
   }
   if (f.type === 'text' || f.type === 'select') {
@@ -326,6 +360,10 @@ function validateScalar(f: FormField, raw: unknown, errors: string[], label?: st
     if (!s) { if (f.required) errors.push(`${name} es obligatorio.`); return undefined; }
     if (f.type === 'select' && f.options && !f.options.some(o => o.id === s)) {
       errors.push(`${name}: opción inválida.`);
+      return undefined;
+    }
+    if (f.maxLength !== undefined && s.length > f.maxLength) {
+      errors.push(`${name} es muy largo (máximo ${f.maxLength} caracteres).`);
       return undefined;
     }
     return s;

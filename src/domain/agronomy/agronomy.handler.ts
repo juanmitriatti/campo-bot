@@ -2778,12 +2778,14 @@ export class AgronomyHandler {
           } else {
             return {
               messages: [],
+              needsConfirmation: true,
               interactive: {
                 type: 'buttons' as const,
                 body: `⚠️ *${kgHa.toLocaleString('es-AR')} kg/ha* (${Math.round(kgHa / 100)} qq/ha) de ${crop} en *${plotLabel}* es mucho más de lo habitual (más de ${maxQq} qq/ha).\n\n¿Está bien? Si fue un error de unidades, tocá Corregir y mandame de nuevo la cosecha con el rinde correcto.`,
                 buttons: [
                   { id: `cmdtok_${callbackPayloadStore.set(JSON.stringify({ ...cmd, __yieldConfirmed: true }))}`, title: 'Sí, es correcto' },
-                  { id: 'cancel_action', title: 'Corregir' },
+                  // Desde un formulario, corregir = volver a abrirlo.
+                  { id: (cmd as Record<string, unknown>).__fromForm ? 'form_open_harvest' : 'cancel_action', title: 'Corregir' },
                 ],
               },
             };

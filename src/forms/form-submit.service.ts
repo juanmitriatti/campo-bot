@@ -27,6 +27,7 @@ import {
   hydratePendingStores, applySideEffects,
 } from '../services/message-pipeline.js';
 import { withUserLock } from '../middleware/user-lock.js';
+import { runWithCallbackOwner } from '../middleware/callback-payload-store.js';
 import { sendTelegramMessage, sendTelegramButtons, sendTelegramList } from '../services/telegram.js';
 import { sendMessage as sendWhatsAppText, sendInteractiveButtons, sendInteractiveList } from '../services/whatsapp.js';
 import { CategoryRepository } from '../domain/financial/category.repository.js';
@@ -342,6 +343,11 @@ class CommitAborted extends Error {
   constructor(readonly result: SubmitResult) { super('commit aborted'); }
 }
 
+/** El handler no guardó porque el valor es improbable y pregunta con botones. */
+class ConfirmationNeeded extends Error {
+  constructor(readonly response: HandlerResponse) { super('confirmation needed'); }
+}
+
 async function explainDeadToken(token: string): Promise<SubmitResult> {
   const row = await formSessionService.find(token).catch(() => null);
   if (row?.used_at && (row.status === 'submitted' || row.status == null)) {
@@ -445,6 +451,16 @@ export async function submitForm(
     // (el submit trataría los botones como éxito y quemaría el token sin guardar).
     const settings = await userRepository.getSettings(session.user_id as never);
 
+    // Si había un pending del mismo action y ya no tiene cola, limpiarlo
+    const consumePending = (done: Record<string, unknown>): void => {
+      const pendingCmd = (pending as { command?: string } | undefined)?.command;
+      const sameAction = pendingCmd === action || pendingCmd === (done.command as string);
+      if (pending && sameAction && !(pending as { nextInQueue?: unknown[] }).nextInQueue?.length) {
+        pendingActStore.clear(session.phone);
+        console.log('[FORM] pending consumido por submit');
+      }
+    };
+
     let response: HandlerResponse;
     try {
       response = await withTransaction(async () => {
@@ -468,6 +484,9 @@ export async function submitForm(
         // (siembra / cosecha repetida): no escribe y NO es un error — el
         // formulario se cierra con ese mensaje.
         const alreadyRecorded = r?.alreadyRecorded === true;
+        // Valor improbable (rinde sobre el techo del cultivo): la pregunta con
+        // botones ES la salida. Antes contaba como error y los botones se perdían.
+        if (r?.needsConfirmation) throw new ConfirmationNeeded(r);
         const failed = !r || blocking || firstMsg.startsWith('❌')
           || (written === false && !alreadyRecorded)
           || (written === null && !firstMsg);
@@ -488,7 +507,17 @@ export async function submitForm(
       }) as HandlerResponse;
     } catch (err) {
       if (err instanceof CommitAborted) return err.result;
-      throw err;
+      if (!(err instanceof ConfirmationNeeded)) throw err;
+      // Nada quedó escrito. El formulario se cierra y manda el botón: el
+      // pending y el flujo que acompañaba se consumen acá, porque el botón
+      // guarda el comando completo (si no, se podía registrar dos veces).
+      if (!(await formSessionService.claim(token))) return explainDeadToken(token);
+      if (linked) await closeLinkedFlow(Number(session.user_id));
+      consumePending(cmd);
+      const question = err.response.interactive?.body ?? '';
+      if ((opts.deliver ?? 'chat') === 'chat') await sendToChat(session, '', err.response.interactive);
+      console.log(`[FORM] submitted action=${action} user=${session.user_id} pide confirmación (nada guardado todavía)`);
+      return { ok: true, message: `${question}\n\nRespondé con los botones en el chat.`, response: err.response };
     }
 
     // Éxito: side effects legítimos (ej. botones de cierre de campaña tras
@@ -506,17 +535,12 @@ export async function submitForm(
     // mostrar nada aunque el registro estaba guardado.
     const resultText = fullText || response.interactive?.body || '✅ Registrado.';
 
-    // Si había un pending del mismo action y ya no tiene cola, limpiarlo
-    const pendingCmd = (pending as { command?: string } | undefined)?.command;
-    const sameAction = pendingCmd === action || pendingCmd === (cmd.command as string);
-    if (pending && sameAction && !(pending as { nextInQueue?: unknown[] }).nextInQueue?.length) {
-      pendingActStore.clear(session.phone);
-      console.log('[FORM] pending consumido por submit');
-    }
+    consumePending(cmd);
 
     console.log(`[FORM] submitted action=${action} cmd=${String(cmd.command)} user=${session.user_id} msg="${fullText.slice(0, 80).replace(/\n/g, ' ')}"`);
     return { ok: true, message: resultText, response };
   };
 
-  return opts.alreadyLocked ? commit() : withUserLock(lockKeyForSession(session), commit);
+  const owned = () => runWithCallbackOwner(session.user_id, commit);
+  return opts.alreadyLocked ? owned() : withUserLock(lockKeyForSession(session), owned);
 }
