@@ -372,7 +372,12 @@ export class InteractiveRouter {
       }
       return {
         type: 'command',
-        data: { command: 'sow_replace_confirm', payload: callbackId.slice('sow_replace_'.length) },
+        // sow_replace_<token>[_<motivo>]: el motivo del cierre sin cosecha viaja en el id.
+        data: {
+          command: 'sow_replace_confirm',
+          payload: callbackId.slice('sow_replace_'.length, 'sow_replace_'.length + 8),
+          reason: callbackId.slice('sow_replace_'.length + 9) || null,
+        },
       };
     }
 

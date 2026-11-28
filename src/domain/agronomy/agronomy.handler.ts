@@ -283,6 +283,18 @@ function isLikelyQuestionOrFollowUp(text: string, prefixDetected?: boolean): boo
   return false;
 }
 
+
+/** Motivos de un cierre de campaña SIN cosecha (plot_crops.close_reason). Fuente única. */
+const SOW_CLOSE_REASONS = [
+  { key: 'perdida', title: 'Se perdió el cultivo', label: 'pérdida del cultivo', description: 'Cierro la campaña sin cosecha.' },
+  { key: 'resiembra', title: 'Resiembra', label: 'resiembra', description: 'Cierro la anterior y registro la nueva.' },
+  { key: 'error_de_carga', title: 'Estaba mal cargada', label: 'error de carga', description: 'La anterior fue un error.' },
+] as const;
+
+function sowCloseReasonLabel(key: unknown): string | null {
+  return SOW_CLOSE_REASONS.find(r => r.key === key)?.label ?? null;
+}
+
 export class AgronomyHandler {
   private plotDiscovery = new PlotDiscoveryService();
   private cropService = new CropService();
@@ -382,42 +394,35 @@ export class AgronomyHandler {
       const bulkLabel = formatPlotLocation(fieldName, plotName);
       console.log(`[INTERCEPT] sow-replace guard (bulk): salteo siembra de ${newCrop} en lote ${plotId} — tiene ${active.crop} activa`);
       return {
-        messages: [`💡 No sembré *${cap(newCrop)}* en ${bulkLabel}: ya tiene *${cap(active.crop)}* activa. Si querés reemplazarla, mandámelo aparte: _"sembré ${cmd.hectares ?? 'X'} ha de ${newCrop} en ${plotName ?? 'ese lote'}"_.`],
+        messages: [`💡 No sembré *${cap(newCrop)}* en ${bulkLabel}: ya tiene *${cap(active.crop)}* activa. Mandame esa siembra aparte y te pregunto qué pasó con la campaña de ${active.crop.toLowerCase()}.`],
       };
     }
 
+    // Sembrar otro cultivo NO dice qué pasó con el que estaba: cerrar no es
+    // cosechar. Una sola pregunta para todos los casos, y el motivo de un
+    // cierre sin cosecha queda guardado (plot_crops.close_reason).
     const plotLabel = formatPlotLocation(fieldName, plotName);
-    // Fina sin cosecha registrada + gruesa nueva: casi siempre es la soja de
-    // 2da y el usuario no cargó la cosecha del trigo. Se ofrece eso primero.
-    if (active.season_type === 'fina' && getSeasonTypeForCrop(newCrop) === 'gruesa') {
-      const token2 = callbackPayloadStore.set(JSON.stringify({ ...cmd, command: 'sow_crop' }));
-      console.log(`[INTERCEPT] sow-replace guard: lote ${plotId} tiene ${active.crop} sin cosechar, siembra ${newCrop} — ¿de 2da?`);
-      return {
-        messages: [],
-        interactive: {
-          type: 'buttons' as const,
-          body: `🌾 El ${plotLabel} tiene *${cap(active.crop)}* sin cosecha registrada.\n\n¿Ya lo cosecharon? Si es así, cierro esa campaña y registro la *${cap(newCrop)}* como *de segunda*.\n\n_El rinde del ${active.crop.toLowerCase()} lo podés cargar después: "el ${active.crop.toLowerCase()} del ${plotName ?? 'lote'} rindió X qq/ha"._`,
-          buttons: [
-            { id: `sow_after_harvest_${token2}`, title: 'Sí, ya se cosechó' },
-            { id: `sow_replace_${token2}`, title: 'No, se perdió' },
-            { id: 'sow_replace_cancel', title: 'Cancelar' },
-          ],
-        },
-      };
-    }
-    const haNote = active.sowed_hectares ? ` (${Number(active.sowed_hectares).toLocaleString('es-AR')} ha` : ' (';
-    const dateNote = active.start_date ? `${active.sowed_hectares ? ', ' : ''}sembrad${cap(active.crop).endsWith('a') ? 'a' : 'o'} ${formatDateAR(active.start_date)})` : ')';
+    const prev = active.crop.toLowerCase();
+    const facts = [
+      active.sowed_hectares ? `${Number(active.sowed_hectares).toLocaleString('es-AR')} ha` : null,
+      active.start_date ? `siembra ${formatDateAR(active.start_date)}` : null,
+    ].filter(Boolean).join(', ');
     const token = callbackPayloadStore.set(JSON.stringify({ ...cmd, command: 'sow_crop' }));
-    console.log(`[INTERCEPT] sow-replace guard: lote ${plotId} tiene ${active.crop} activa, siembra nueva=${newCrop} — preguntando`);
+    console.log(`[INTERCEPT] sow-replace guard: lote ${plotId} tiene ${active.crop} activa, siembra nueva=${newCrop} — preguntando qué pasó`);
     return {
       messages: [],
       interactive: {
-        type: 'buttons' as const,
-        body: `⚠️ El ${plotLabel} ya tiene *${cap(active.crop)}* activa${haNote}${dateNote}.\n\n¿Reemplazo esa campaña por *${cap(newCrop)}*?\n\n_Si va en otro lote, decime en cuál. Si ese cultivo ya se cosechó, contame primero la cosecha y el nuevo queda como la campaña siguiente._`,
-        buttons: [
-          { id: `sow_replace_${token}`, title: 'Sí, reemplazar' },
-          { id: 'sow_replace_cancel', title: 'No, cancelar' },
-        ],
+        type: 'list' as const,
+        body: `🌱 El ${plotLabel} ya tiene una campaña de *${prev}* activa${facts ? ` (${facts})` : ''}, sin cosecha registrada.\n\nQuerés registrar *${newCrop.toLowerCase()}* en ese lote. ¿Qué pasó con la campaña de ${prev}?`,
+        buttonText: 'Elegir',
+        sections: [{
+          title: 'Campaña anterior',
+          rows: [
+            { id: `sow_after_harvest_${token}`, title: 'Ya se cosechó', description: 'La cierro como cosechada. El rinde lo cargás después.' },
+            ...SOW_CLOSE_REASONS.map(r => ({ id: `sow_replace_${token}_${r.key}`, title: r.title, description: r.description })),
+            { id: 'sow_replace_cancel', title: 'Cancelar', description: 'No cambio ninguna campaña.' },
+          ],
+        }],
       },
     };
   }
@@ -2290,7 +2295,8 @@ export class AgronomyHandler {
           return { messages: ['⏰ Esa confirmación venció. Volvé a mandarme la siembra (ej: "sembré 130 ha de maíz en lote 3b").'] };
         }
         const savedCmd = JSON.parse(stored) as ParsedCommand;
-        return this.handleCommand({ ...savedCmd, __forceReplaceCampaign: true } as ParsedCommand, userId, user, settings);
+        const reason = SOW_CLOSE_REASONS.find(r => r.key === cmd.reason)?.key ?? null;
+        return this.handleCommand({ ...savedCmd, __forceReplaceCampaign: true, __closeReason: reason } as ParsedCommand, userId, user, settings);
       }
 
       case 'sow_after_harvest_confirm': {
@@ -2312,11 +2318,14 @@ export class AgronomyHandler {
             console.log(`[INTERCEPT] sow_after_harvest: ${active.crop} (campaña ${active.id}) marcada cosechada el ${when} para sembrar de 2da`);
           }
         }
-        return this.handleCommand({ ...savedCmd, __cropOrder: 2 } as ParsedCommand, userId, user, settings);
+        // De segunda solo cuando es gruesa sobre fina; si no, el orden lo deduce startCrop.
+        const second = getSeasonTypeForCrop(String(savedCmd.crop ?? '')) === 'gruesa' && pr.type === 'resolved'
+          && (await this.cropService.getActive(pr.plotId))?.season_type === 'fina';
+        return this.handleCommand({ ...savedCmd, ...(second ? { __cropOrder: 2 } : {}) } as ParsedCommand, userId, user, settings);
       }
 
       case 'sow_replace_cancel': {
-        return { messages: ['👍 No toqué nada — la campaña activa sigue como estaba.\nSi la siembra va en otro lote, decime: *"sembré X ha de <cultivo> en lote <nombre>"*.'] };
+        return { messages: ['👍 No toqué nada: la campaña activa sigue como estaba y la siembra nueva no se registró.\nSi iba en otro lote, mandámela con el nombre del lote.'] };
       }
 
       case 'sow_crop': {
@@ -2513,7 +2522,7 @@ export class AgronomyHandler {
         }
 
         const forcedOrder = (cmd.__cropOrder as 1 | 2 | undefined) ?? cropOrderCue;
-        const { cropRow, closedPrevious } = await this.cropService.startCrop(userId, plotResult.plotId, crop, cmd.eventDate as Date | string | null, sowedHa, variety, { cropOrder: forcedOrder });
+        const { cropRow, closedPrevious } = await this.cropService.startCrop(userId, plotResult.plotId, crop, cmd.eventDate as Date | string | null, sowedHa, variety, { cropOrder: forcedOrder, closeReason: (cmd.__closeReason as string | null) ?? null });
         const label = formatSeasonLabel(cropRow.season_year, cropRow.season_type);
         const plotLabel = formatPlotLocation(plotResult.fieldName, plotResult.plotName);
 
@@ -2549,8 +2558,8 @@ export class AgronomyHandler {
 
         if (closedPrevious) {
           sowMsg += closedPrevious.harvested_at
-            ? `\n📋 _Cerré la campaña de ${closedPrevious.crop} (ya cosechada)${order === 2 ? ': esta va de segunda' : ''}._`
-            : `\n📋 _Cerré la campaña anterior de ${closedPrevious.crop}._`;
+            ? `\n📋 _Cerré la campaña de ${closedPrevious.crop.toLowerCase()} (ya cosechada)${order === 2 ? ': esta va de segunda' : ''}. El rinde lo podés cargar cuando quieras._`
+            : `\n📋 _Campaña anterior de ${closedPrevious.crop.toLowerCase()} cerrada sin cosecha${sowCloseReasonLabel(cmd.__closeReason) ? `. Motivo: ${sowCloseReasonLabel(cmd.__closeReason)}` : ''}. Queda en el historial._`;
         }
         return { messages: [sowMsg] };
       }

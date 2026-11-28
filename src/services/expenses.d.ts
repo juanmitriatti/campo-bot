@@ -152,7 +152,7 @@ export function deleteDomainEvent(eventId: number): Promise<{ id: number; user_i
 
 // --- Plot crops ---
 export function createPlotCrop(plotId: number, crop: string, seasonYear: number, seasonType: string, startDate?: Date | string | null, sowedHectares?: number | null, variety?: string | null, cropOrder?: 1 | 2 | null): Promise<{ id: number; plot_id: number; crop: string; season_year: number; season_type: string; start_date: Date; end_date: Date | null; created_at: Date }>;
-export function closePlotCrop(plotCropId: number, endDate?: Date | string | null): Promise<{ id: number; plot_id: number; crop: string; season_year: number; season_type: string; start_date: Date; end_date: Date | null; created_at: Date } | null>;
+export function closePlotCrop(plotCropId: number, endDate?: Date | string | null, closeReason?: string | null): Promise<{ id: number; plot_id: number; crop: string; season_year: number; season_type: string; start_date: Date; end_date: Date | null; created_at: Date } | null>;
 export function getActiveCrop(plotId: number): Promise<{ id: number; plot_id: number; crop: string; season_year: number; season_type: string; start_date: Date; end_date: Date | null; created_at: Date } | null>;
 export function getPlotCropHistory(plotId: number): Promise<Array<{ id: number; plot_id: number; crop: string; season_year: number; season_type: string; start_date: Date; end_date: Date | null; created_at: Date }>>;
 export function getPlotCropBySeason(plotId: number, seasonYear: number, crop: string): Promise<{ id: number; plot_id: number; crop: string; season_year: number; season_type: string; start_date: Date; end_date: Date | null; created_at: Date } | null>;

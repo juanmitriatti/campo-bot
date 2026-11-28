@@ -186,7 +186,7 @@ describe('CropService', () => {
 
       expect(result.closedPrevious).toBe(closedOld);
       expect(result.cropRow.crop).toBe('Soja');
-      expect(mocks.closePlotCrop).toHaveBeenCalledWith(1, '2025-10-15');
+      expect(mocks.closePlotCrop).toHaveBeenCalledWith(1, '2025-10-15', null);
     });
   });
 

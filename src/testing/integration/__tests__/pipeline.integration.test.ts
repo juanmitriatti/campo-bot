@@ -395,7 +395,7 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
       h.fakeAgent.enqueueTool('sow_crop', { crop: 'maíz', plot: '3b', hectares: 130 });
       const ask = await h.send('y sembré 130 ha de maíz en 3b');
       const buttons = h.allButtons(ask);
-      expect(h.allText(ask)).toMatch(/ya tiene \*Soja\* activa/i);
+      expect(h.allText(ask)).toMatch(/ya tiene una campaña de \*soja\* activa[\s\S]*¿Qué pasó con la campaña de soja\?/i);
       const yesBtn = buttons.find(b => b.id.startsWith('sow_replace_') && b.id !== 'sow_replace_cancel');
       expect(yesBtn, 'botón Sí, reemplazar').toBeTruthy();
       expect(buttons.some(b => b.id === 'sow_replace_cancel')).toBe(true);
@@ -417,7 +417,11 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
       const yes2 = h.allButtons(ask2).find(b => b.id.startsWith('sow_replace_') && b.id !== 'sow_replace_cancel')!;
       const done = await h.tap(yes2.id);
       expect(h.allText(done)).toMatch(/Siembra registrada/i);
-      expect(h.allText(done)).toMatch(/Cerré la campaña anterior de soja/i);
+      expect(h.allText(done)).toMatch(/Campaña anterior de soja cerrada sin cosecha. Motivo: pérdida del cultivo/i);
+      // El motivo queda guardado en la campaña cerrada (no se cierra en silencio).
+      const closed = await h.q(`SELECT close_reason, harvested_at FROM plot_crops WHERE plot_id = $1 AND end_date IS NOT NULL`, [plotId]);
+      expect(closed[0].close_reason).toBe('perdida');
+      expect(closed[0].harvested_at).toBeNull();
       active = await h.q(`SELECT crop FROM plot_crops WHERE plot_id = $1 AND end_date IS NULL`, [plotId]);
       expect(active.length).toBe(1);
       expect(String(active[0].crop)).toMatch(/ma[ií]z/i);
@@ -455,7 +459,7 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
     it('soja sobre el trigo SIN cosecha registrada ofrece "ya se cosechó" y la registra de 2da', async () => {
       h.fakeAgent.enqueueTool('sow_crop', { crop: 'soja', plot: 'Bajo', event_date: '2025-12-15' });
       const ask = await h.send('sembré soja en el Bajo el 15 de diciembre');
-      expect(h.allText(ask)).toMatch(/sin cosecha registrada/);
+      expect(h.allText(ask)).toMatch(/sin cosecha registrada[\s\S]*¿Qué pasó con la campaña de trigo\?/);
       const yes = h.allButtons(ask).find(b => b.id.startsWith('sow_after_harvest_'));
       expect(yes).toBeTruthy();
       const done = h.allText(await h.tap(yes!.id));

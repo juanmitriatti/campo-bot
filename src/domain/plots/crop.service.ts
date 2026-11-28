@@ -145,7 +145,7 @@ export class CropService {
     date?: Date | string | null,
     sowedHectares?: number | null,
     variety?: string | null,
-    opts: { cropOrder?: 1 | 2 | null } = {},
+    opts: { cropOrder?: 1 | 2 | null; closeReason?: string | null } = {},
   ): Promise<{ cropRow: PlotCropRow; closedPrevious: PlotCropRow | null }> {
     // La fecha de SIEMBRA manda: start_date y la campaña (año/tipo) salen de
     // ella, no de hoy. Antes el handler pasaba `undefined` y una siembra
@@ -172,7 +172,7 @@ export class CropService {
         return { cropRow: active, closedPrevious: null };
       }
       // Different crop → close the previous one
-      closedPrevious = await closePlotCrop(active.id, startISO) as PlotCropRow | null;
+      closedPrevious = await closePlotCrop(active.id, startISO, active.harvested_at ? null : (opts.closeReason ?? null)) as PlotCropRow | null;
     }
 
     const previous = closedPrevious ?? (((await getPlotCropHistory(plotId)) ?? []) as PlotCropRow[])[0] ?? null;

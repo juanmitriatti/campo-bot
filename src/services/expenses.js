@@ -2386,11 +2386,12 @@ export async function createPlotCrop(plotId, crop, seasonYear, seasonType, start
   return result.rows[0];
 }
 
-export async function closePlotCrop(plotCropId, endDate = null) {
+export async function closePlotCrop(plotCropId, endDate = null, closeReason = null) {
   const result = await pool.query(
-    `UPDATE plot_crops SET end_date = COALESCE($2, CURRENT_DATE)
+    `UPDATE plot_crops SET end_date = COALESCE($2, CURRENT_DATE),
+            close_reason = COALESCE($3, close_reason)
      WHERE id = $1 RETURNING *`,
-    [plotCropId, endDate]
+    [plotCropId, endDate, closeReason]
   );
   return result.rows[0] || null;
 }
