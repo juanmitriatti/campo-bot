@@ -66,18 +66,33 @@ describe.skipIf(!dbAvailable)('stock ambiguo y deshacer el gasto vencido', () =>
     expect(await stock()).toEqual([200]);
   });
 
-  it('gasto vencido que guarda el cron: trae «Deshacer» y funciona una sola vez', async () => {
+  it('gasto que vence sin terminar: el cron NO lo guarda; avisa con Retomar / Guardar sin lote / Descartar', async () => {
     const { closeExpiredFlow } = await import('../../../services/scheduler.js');
     h.fakeAgent.enqueueTool('log_expense', { amount: 7000, category: 'Otros', description: 'varios' });
     await h.send('gasté 7000 en varios');
     await h.q(`UPDATE conversation_state SET flow_expires_at = NOW() - INTERVAL '1 minute' WHERE user_id = $1`, [h.userId]);
     const closed = await closeExpiredFlow({ userId: h.userId, phone: h.phone, telegramId: null }, Date.now());
-    expect(await liveExpenses()).toEqual([7000]);
-    expect(closed.buttons?.map(b => b.title)).toEqual(['Deshacer']);
-    const text = h.allText(await h.tap(closed.buttons![0].id));
-    expect(text).toMatch(/borré/i);
     expect(await liveExpenses()).toEqual([]);
-    expect(h.allText(await h.tap(closed.buttons![0].id))).toMatch(/ya no está/i);
+    expect(closed.text).toMatch(/no lo registré/);
+    expect(closed.buttons?.map(b => b.title)).toEqual(['Retomar', 'Guardar sin lote', 'Descartar']);
+    // Descartar: no queda nada, y un segundo toque no hace nada.
+    const drop = closed.buttons!.find(b => b.title === 'Descartar')!.id;
+    expect(h.allText(await h.tap(drop))).toMatch(/descartado/i);
+    expect(await liveExpenses()).toEqual([]);
+    expect(h.allText(await h.tap(drop))).toMatch(/ya no está/i);
+  });
+
+  it('«Retomar» un gasto vencido reabre la pregunta del lote y se termina normal', async () => {
+    const { closeExpiredFlow } = await import('../../../services/scheduler.js');
+    h.fakeAgent.enqueueTool('log_expense', { amount: 8000, category: 'Otros', description: 'varios' });
+    await h.send('gasté 8000 en varios');
+    await h.q(`UPDATE conversation_state SET flow_expires_at = NOW() - INTERVAL '1 minute' WHERE user_id = $1`, [h.userId]);
+    const closed = await closeExpiredFlow({ userId: h.userId, phone: h.phone, telegramId: null }, Date.now());
+    const resumed = await h.tap(closed.buttons!.find(b => b.title === 'Retomar')!.id);
+    expect(h.allText(resumed)).toMatch(/lote/i);
+    await h.tap('flow_plot_field_level');
+    expect(await liveExpenses()).toEqual([8000]);
+    await h.q(`DELETE FROM expenses WHERE user_id = $1`, [h.userId]);
   });
 
   it('un «Deshacer» de otro usuario no borra nada', async () => {

@@ -513,7 +513,7 @@ export class SystemHandler {
         // La baja nunca se ejecuta por texto: un botón con token atado a este
         // usuario y de 10 min (callbackPayloadStore). Lo atiende el pipeline.
         const { callbackPayloadStore } = await import('../../middleware/callback-payload-store.js');
-        const token = callbackPayloadStore.set(JSON.stringify({ kind: 'delete_my_account', userId: Number(userId) }));
+        const token = callbackPayloadStore.set(JSON.stringify({ kind: 'delete_my_account', userId: Number(userId), ts: Date.now() }));
         const { getSettingBool } = await import('../../services/settings.service.js');
         const purgeOn = (await getSettingBool('ACCOUNT_PURGE_ENABLED')) === true;
         return {

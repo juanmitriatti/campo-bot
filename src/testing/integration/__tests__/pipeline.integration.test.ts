@@ -338,7 +338,7 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
       h.fakeAgent.enqueueTool('delete_last_activity', {});
       const ask = await h.send('borrá la última actividad');
       const text = h.allText(ask);
-      expect(text).toMatch(/Seguro que queres eliminar la ultima actividad/i);
+      expect(text).toMatch(/Seguro que querés eliminar la última actividad/i);
       expect(text).toMatch(/🗑️ Fumigación/i); // preview del objetivo, con la etiqueta en castellano
       // NO borró todavía
       let acts = await h.q(`SELECT COUNT(*)::int AS n FROM domain_events WHERE user_id = $1`, [h.userId]);
@@ -805,7 +805,7 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
       await b.q(`INSERT INTO expenses (user_id, amount, currency, category, expense_date) VALUES ($1, 10, 'ARS', 'Otros', CURRENT_DATE)`, [b.userId]);
       const items = await b.tap('confirm_pending');
       await b.q('DELETE FROM expenses WHERE user_id = $1 AND amount = 10', [b.userId]);
-      expect(b.allText(items)).toMatch(/Seguro que queres eliminar/i);
+      expect(b.allText(items)).toMatch(/Seguro que querés eliminar/i);
       expect(b.allButtons(items).map(x => x.id)).toContain('confirm_destructive_delete_last_expense');
       pendingStore.clear(b.phone);
     });
@@ -3543,7 +3543,7 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
     it('tap en «Borrar último» pide confirmación con preview y NO borra; el tap queda registrado', async () => {
       const before = await h.q(`SELECT COUNT(*)::int AS n FROM expenses WHERE user_id = $1 AND deleted_at IS NULL`, [h.userId]);
       const items = await h.tap('cmd_borrar_ultimo_gasto');
-      expect(h.allText(items)).toMatch(/Seguro que queres eliminar el ultimo gasto/i);
+      expect(h.allText(items)).toMatch(/Seguro que querés eliminar el último gasto/i);
       expect(h.allButtons(items).map(b => b.id)).toContain('confirm_destructive_delete_last');
       const after = await h.q(`SELECT COUNT(*)::int AS n FROM expenses WHERE user_id = $1 AND deleted_at IS NULL`, [h.userId]);
       expect((after[0] as { n: number }).n).toBe((before[0] as { n: number }).n);
@@ -4462,7 +4462,7 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
       expect(out).not.toMatch(/55 tn/);
     });
 
-    it('una consulta read-only con "¿Confirmo gasto?" abierto se responde y la tarjeta vuelve: el gasto NO se guarda solo', async () => {
+    it('una consulta con "¿Confirmo gasto?" abierto se responde sin volver a mostrar la tarjeta: el gasto NO se guarda solo y su botón sigue sirviendo', async () => {
       // confirm_before_save es true por default en el harness.
       h.fakeAgent.enqueueTool('log_expense', { amount: 50000, category: 'Combustible', description: 'gasoil', plot: 'Norte' });
       const ask = await h.send('gasté 50 mil en gasoil en el Norte');
@@ -4474,8 +4474,8 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
       const t1 = h.allText(q1);
       expect(t1).toMatch(/El Rincón/);
       expect(t1).not.toMatch(/Guardé el gasto/);
-      expect(t1).toMatch(/Sigue pendiente/);
-      expect(h.allButtons(q1).some(b => b.id === 'confirm_pending')).toBe(true);
+      // La tarjeta sigue esperando, pero no vuelve a interrumpir (nota de Juan, nov 2026).
+      expect(t1).not.toMatch(/Confirmo gasto|Sigue pendiente/);
       const none = await h.q(`SELECT COUNT(*)::int AS n FROM expenses WHERE user_id = $1 AND deleted_at IS NULL`, [h.userId]);
       expect(Number(none[0].n)).toBe(0);
 
@@ -4484,7 +4484,7 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
       const q2 = await h.send('cuánto gasté este mes');
       const t2 = h.allText(q2);
       expect(t2).not.toMatch(/Guardé el gasto/);
-      expect(t2).toMatch(/Sigue pendiente/);
+      expect(t2).not.toMatch(/Confirmo gasto|Sigue pendiente/);
       const still = await h.q(`SELECT COUNT(*)::int AS n FROM expenses WHERE user_id = $1 AND deleted_at IS NULL`, [h.userId]);
       expect(Number(still[0].n)).toBe(0);
 
@@ -4496,16 +4496,45 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
       expect(Number(saved[0].plot_id)).toBe(norteId);
     });
 
-    it('un WRITE nuevo con la tarjeta abierta sigue guardando el anterior, con aviso (nada se pierde)', async () => {
+    it('un registro nuevo con la tarjeta abierta NO la confirma: queda esperando y se guarda recién con su botón', async () => {
+      const amounts = async () => (await h.q(`SELECT amount FROM expenses WHERE user_id = $1 AND deleted_at IS NULL ORDER BY id`, [h.userId])).map(r => Number(r.amount));
       h.fakeAgent.enqueueTool('log_expense', { amount: 20000, category: 'Combustible', description: 'aceite', plot: 'Sur' });
       const ask = await h.send('gasté 20 mil en aceite en el Sur');
       expect(h.allText(ask)).toMatch(/Confirmo gasto/);
       h.fakeAgent.enqueueTool('log_rainfall', { quantity: 10, field: 'El Rincón' });
       const out = h.allText(await h.send('llovieron 10 mm en El Rincón'));
-      expect(out).toMatch(/Guardé el gasto antes de seguir/);
+      expect(out).not.toMatch(/Guardé el gasto/);
       expect(out).toMatch(/10 ?mm/);
-      const rows = await h.q(`SELECT amount FROM expenses WHERE user_id = $1 AND deleted_at IS NULL ORDER BY id`, [h.userId]);
-      expect(rows.map(r => Number(r.amount))).toEqual([50000, 20000]);
+      expect(await amounts()).toEqual([50000]);
+      // Un "sí" suelto después de otro tema no confirma a ciegas: re-muestra la tarjeta.
+      const again = await h.send('si');
+      expect(h.allText(again)).toMatch(/Confirmo gasto[\s\S]*20\.000/);
+      expect(await amounts()).toEqual([50000]);
+      await h.tap('confirm_pending');
+      expect(await amounts()).toEqual([50000, 20000]);
+    });
+
+    it('dos gastos sin confirmar: cada tarjeta guarda la suya, en cualquier orden, y ninguna pisa a la otra', async () => {
+      const amounts = async () => (await h.q(`SELECT amount FROM expenses WHERE user_id = $1 AND deleted_at IS NULL ORDER BY amount`, [h.userId])).map(r => Number(r.amount));
+      const base = await amounts();
+      h.fakeAgent.enqueueTool('log_expense', { amount: 1111, category: 'Combustible', description: 'a', plot: 'Sur' });
+      const first = await h.send('gasté 1111 en gasoil en el Sur');
+      const firstBtn = h.allButtons(first).find(b => b.title === 'Confirmar')!.id;
+      h.fakeAgent.enqueueTool('log_expense', { amount: 2222, category: 'Combustible', description: 'b', plot: 'Sur' });
+      const second = await h.send('gasté 2222 en gasoil en el Sur');
+      expect(h.allText(second)).toMatch(/Quedó esperando tu confirmación: \*gasto Combustible \$1\.111\*/);
+      const secondBtn = h.allButtons(second).find(b => b.title === 'Confirmar')!.id;
+      expect(secondBtn).not.toBe(firstBtn);
+      expect(await amounts()).toEqual(base);
+      // El botón VIEJO confirma el gasto viejo, no el nuevo.
+      const afterFirst = await h.tap(firstBtn);
+      expect(await amounts()).toEqual([...base, 1111].sort((a, b) => a - b));
+      // Y la que quedaba esperando vuelve a mostrarse.
+      expect(h.allText(afterFirst)).toMatch(/Sigue pendiente[\s\S]*2\.222/);
+      await h.tap(secondBtn);
+      expect(await amounts()).toEqual([...base, 1111, 2222].sort((a, b) => a - b));
+      // Un botón ya usado no hace nada.
+      expect(h.allText(await h.tap(secondBtn))).toMatch(/No hay nada pendiente|ya no está pendiente/);
     });
   });
 
@@ -5578,19 +5607,21 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
     });
     afterAll(async () => { await h?.cleanup(); });
 
-    it('no dice "Guardé" y la tarjeta sigue pendiente', async () => {
+    it('ya no se intenta guardar al cambiar de tema: no dice "Guardé" y la tarjeta sigue pendiente', async () => {
       const { FinancialHandler } = await import('../../../domain/financial/financial.handler.js');
       h.fakeAgent.enqueueTool('log_expense', { amount: 5000, category: 'Otros', description: 'varios' });
       await h.send('gasté 5000 en varios');
       const { pendingStore } = await import('../../../services/message-pipeline.js');
       expect(pendingStore.get(h.phone)).toBeTruthy();
-      const spy = vi.spyOn(FinancialHandler.prototype, 'handleConfirm').mockRejectedValueOnce(new Error('db caída'));
+      const spy = vi.spyOn(FinancialHandler.prototype, 'handleConfirm');
       h.fakeAgent.enqueueTool('log_rainfall', { quantity: 20, field: 'El Ceibo' });
       const text = h.allText(await h.send('llovieron 20 mm en El Ceibo'));
+      expect(spy).not.toHaveBeenCalled();
       spy.mockRestore();
       expect(text).not.toContain('Guardé el gasto');
-      expect(text).toContain('No pude guardar el gasto');
+      expect(text).toMatch(/20 ?mm/);
       expect(pendingStore.get(h.phone)).toBeTruthy();
+      expect(await h.q(`SELECT 1 FROM expenses WHERE user_id = $1 AND deleted_at IS NULL`, [h.userId])).toHaveLength(0);
     });
   });
 
@@ -5705,15 +5736,26 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
       expect(await expenses()).toHaveLength(1);
     });
 
-    it('flujo vencido por el cron con el gasto completo: se guarda a nivel campo, una sola vez', async () => {
-      const { flowReminderTick } = await import('../../../services/scheduler.js');
+    it('flujo vencido por el cron con el gasto completo: NO se guarda solo, queda como borrador; «Guardar sin lote» lo guarda una vez', async () => {
+      const { closeExpiredFlow } = await import('../../../services/scheduler.js');
+      const { flowDraftStore } = await import('../../../services/message-pipeline.js');
       await ask();
       expect(await expenses()).toHaveLength(0);
       await h.q(`UPDATE conversation_state SET flow_expires_at = NOW() - INTERVAL '1 minute' WHERE user_id = $1`, [h.userId]);
-      await flowReminderTick();
-      await flowReminderTick();
-      expect(await expenses()).toHaveLength(1);
+      // Dos pasadas del cron (el arnés usa un teléfono propio: se llama al cierre directo).
+      const flow = { userId: h.userId, phone: h.phone, telegramId: null };
+      expect((await closeExpiredFlow(flow, Date.now())).expired).toBe(true);
+      expect((await closeExpiredFlow(flow, Date.now())).expired).toBe(false);
+      expect(await expenses()).toHaveLength(0);
       expect(await flowState()).toBe('idle');
+      const draft = flowDraftStore.get(h.phone)!;
+      expect(draft).toBeTruthy();
+      const saved = await h.tap(`flowdraft_save_${draft.id}`);
+      expect(h.allText(saved)).toMatch(/registrado/i);
+      expect(await expenses()).toHaveLength(1);
+      expect(h.allText(await h.tap(`flowdraft_save_${draft.id}`))).toMatch(/Ese borrador ya no está/);
+      expect(await expenses()).toHaveLength(1);
+      await h.q(`DELETE FROM expenses WHERE user_id = $1`, [h.userId]);
     });
 
     it('si la pregunta se canceló sin guardar nada, el formulario que llega tarde sí guarda', async () => {

@@ -21,6 +21,7 @@
  */
 
 import { DESTRUCTIVE_COMMANDS } from '../domain/destructive-commands.js';
+import { formatMoney } from '../utils/format-money.js';
 import { resolveDeleteTarget } from './delete-target.js';
 import { logError } from './error-logger.js';
 import type { PendingActivity } from '../middleware/pending-activities.js';
@@ -43,7 +44,7 @@ import { isPlotAnswerToFlow } from '../utils/plot-intent.js';
 import { isAffirmation, looksLikeNewActionOrQuery, hasActionVerbOrQuery, looksLikeLivestockCount, isReadOnlyQuery, isContentlessMessage, wantsFieldLevelSave } from '../middleware/conversation-guards.js';
 import { extractFieldRestatement } from '../middleware/flows/field-step-helpers.js';
 import { isNewActionInterrupt } from '../middleware/pending-action-processor.js';
-import { PendingTransactionStore, resolveReplacedPending, isCompletePending } from '../middleware/pending-transactions.js';
+import { PendingTransactionStore, resolveReplacedPending, isCompletePending, describeCard } from '../middleware/pending-transactions.js';
 import { PendingObservationStore } from '../middleware/pending-observations.js';
 import { PendingActivityStore, PENDING_ALL_PLOTS_ID } from '../middleware/pending-activities.js';
 import { TypedPendingStore, clearAllTypedStores } from '../middleware/typed-pending-store.js';
@@ -190,6 +191,8 @@ export { pendingCampaignCloseStore };
 // rebotó por no tener campos/lotes se guarda acá y se re-inyecta solo cuando
 // el usuario termina de crear campo+lote (ver wrapper de processTextMessage).
 export const deferredFirstActionStore = new TypedPendingStore<{ originalText: string }>('deferred_first_action');
+// Gasto/ingreso de un flujo que el usuario dejó a medias: borrador de 24 h.
+export const flowDraftStore = new TypedPendingStore<{ id: string; ctx: any }>('flow_draft', 24 * 60 * 60 * 1000);
 // Confirmación de borrado de campo/lote: el botón "Confirmar" lleva el NOMBRE
 // adentro y quedaba vivo para siempre — un botón de ayer volvía a borrar el
 // campo que el usuario había restaurado (auditoría oct 2026, CAM-6). Ahora el
@@ -223,6 +226,7 @@ export async function hydratePendingStores(phone: string): Promise<void> {
     pendingDocUploadStore.hydrate(phone),
     pendingCampaignCloseStore.hydrate(phone),
     deferredFirstActionStore.hydrate(phone),
+    flowDraftStore.hydrate(phone),
     pendingDeleteConfirmStore.hydrate(phone),
     conversationLockStore.hydrate(phone),
     formConversationStore.hydrate(phone),
@@ -238,7 +242,8 @@ export async function hydratePendingStores(phone: string): Promise<void> {
  * estado del usuario" debe pasar por acá, no por una lista propia.
  */
 export async function clearAllUserPendingState(phone: string): Promise<void> {
-  pendingStore.clear(phone);
+  pendingStore.clearAll(phone);
+  flowDraftStore.clear(phone);
   pendingObsStore.clear(phone);
   pendingActStore.clear(phone);
   pendingCityStore.clear(phone);
@@ -484,20 +489,20 @@ async function askDestructiveConfirmation(original: ParsedCommand, userId: UserI
   // objetivo — un tap de otro usuario pisaba el de éste.
   const cmd = { ...original } as ParsedCommand;
   const actionLabels: Record<string, string> = {
-    delete_last: 'eliminar el ultimo gasto',
-    delete_last_expense: 'eliminar el ultimo gasto',
-    delete_last_income: 'eliminar el ultimo ingreso',
+    delete_last: 'eliminar el último gasto',
+    delete_last_expense: 'eliminar el último gasto',
+    delete_last_income: 'eliminar el último ingreso',
     delete_specific: 'eliminar un registro',
     delete_specific_expense: 'eliminar ese gasto',
     delete_specific_income: 'eliminar ese ingreso',
-    delete_last_activity: 'eliminar la ultima actividad',
-    delete_last_observation: 'eliminar la ultima observacion',
-    delete_last_rainfall: 'eliminar la ultima lluvia',
-    delete_last_scouting: 'eliminar el ultimo monitoreo',
+    delete_last_activity: 'eliminar la última actividad',
+    delete_last_observation: 'eliminar la última observación',
+    delete_last_rainfall: 'eliminar la última lluvia',
+    delete_last_scouting: 'eliminar el último monitoreo',
     revert_livestock_movement: 'revertir este movimiento de hacienda',
     delete_harvest_loads: 'eliminar estas cargas',
   };
-  const label = actionLabels[cmd.command] || 'realizar esta accion';
+  const label = actionLabels[cmd.command] || 'realizar esta acción';
   // Preview del objetivo: QUÉ se va a borrar. El registro "de recién" puede
   // haber fallado en silencio y el último real ser uno de hace días.
   const target = await resolveDeleteTarget(cmd, userId).catch((err: unknown) => {
@@ -521,7 +526,7 @@ async function askDestructiveConfirmation(original: ParsedCommand, userId: UserI
     _destructiveCommand: cmd,
   } as any);
   return [interactiveButtons(
-    `¿Seguro que queres ${label}?${preview ? `\n\n${preview}` : ''}${undoable || cmd.command === 'revert_livestock_movement' ? '' : '\nEsto no se puede deshacer.'}`,
+    `¿Seguro que querés ${label}?${preview ? `\n\n${preview}` : ''}${undoable || cmd.command === 'revert_livestock_movement' ? '' : '\nEsto no se puede deshacer.'}`,
     [
       { id: `confirm_destructive_${cmd.command}`, title: 'Confirmar' },
       { id: 'cancel_destructive', title: 'Cancelar' },
@@ -834,6 +839,104 @@ export async function commitFinancialFlowFieldLevel(
   return [{ type: 'text', text: note }, ...collectResponse(result.response)];
 }
 
+/**
+ * Un gasto/ingreso que estaba en un flujo y el usuario dejó (cambió de tema,
+ * abrió un formulario, no contestó a tiempo) NO se guarda solo: queda como
+ * BORRADOR 24 h y se le dice, con botones para retomarlo, guardarlo sin lote o
+ * descartarlo. Antes se guardaba a nivel campo sin que nadie lo confirmara.
+ * Devuelve [] cuando el flujo no tenía un registro completo.
+ */
+export async function parkFlowAsDraft(userId: UserId, flowCtx: any, phone: string): Promise<BotResponseItem[]> {
+  const origin = flowCtx.originFlow ?? flowCtx.state;
+  if (!['expense_flow', 'income_flow'].includes(origin)) return [];
+  const d = (flowCtx.data ?? {}) as Record<string, unknown>;
+  const hasCore = d.amount != null && !!d.category && (d.category !== '__NEW_CATEGORY__' || !!d.categoryNewName);
+  if (!hasCore) return [];
+  const id = Math.random().toString(36).slice(2, 10);
+  flowDraftStore.set(phone, { id, ctx: flowCtx });
+  const kind = origin === 'income_flow' ? 'ingreso' : 'gasto';
+  const raw = d.amount as { amount?: number; currency?: string } | number;
+  const amount = Number(typeof raw === 'object' && raw ? raw.amount : raw);
+  const currency = (typeof raw === 'object' && raw ? raw.currency : (d.currency as string)) ?? 'ARS';
+  const category = d.category === '__NEW_CATEGORY__' ? String(d.categoryNewName) : String(d.category);
+  const place = d.fieldName ? ` · ${String(d.fieldName)}` : '';
+  console.log(`[INTERCEPT] flujo ${origin} abandonado: queda como borrador ${id} (user=${userId}) — NO se guardó`);
+  return [interactiveButtons(
+    `⏸️ Dejé *sin registrar* el ${kind} de *${category}* — ${formatMoney(Number.isFinite(amount) ? amount : 0, currency)}${place}.\nQueda guardado como borrador hasta mañana.`,
+    [
+      { id: `flowdraft_resume_${id}`, title: 'Retomar' },
+      { id: `flowdraft_save_${id}`, title: 'Guardar sin lote' },
+      { id: `flowdraft_drop_${id}`, title: 'Descartar' },
+    ],
+  )];
+}
+
+/** Botones del borrador de un flujo abandonado. */
+async function handleFlowDraftTap(callbackId: string, ctx: ChannelContext): Promise<BotResponseItem[] | null> {
+  const m = callbackId.match(/^flowdraft_(resume|save|drop)_([a-z0-9]+)$/);
+  if (!m) return null;
+  const { userId, phone } = ctx;
+  const draft = flowDraftStore.get(phone);
+  if (!draft || draft.id !== m[2]) {
+    return [{ type: 'text', text: 'ℹ️ Ese borrador ya no está: lo retomaste, lo guardaste o lo descartaste. No hice ningún cambio.' }];
+  }
+  flowDraftStore.clear(phone);
+  if (m[1] === 'drop') {
+    console.log(`[INTERCEPT] borrador ${draft.id} descartado por el usuario (user=${userId})`);
+    return [{ type: 'text', text: '🗑️ Borrador descartado: no se guardó nada.' }];
+  }
+  if (m[1] === 'save') {
+    const items = await commitFinancialFlowFieldLevel(userId, draft.ctx, phone);
+    return items.length > 0 ? items : [{ type: 'text', text: '⚠️ No pude guardar ese borrador. Mandámelo de nuevo.' }];
+  }
+  // Retomar: el flujo vuelve a estar abierto en el paso donde había quedado.
+  // Vuelve a correr el reloj del flujo (mismo plazo que uno recién abierto).
+  const nowIso = new Date().toISOString();
+  const fresh = { ...draft.ctx, startedAt: nowIso, expiresAt: new Date(Date.now() + 10 * 60_000).toISOString() };
+  await conversationEngine.setFlowContext(userId, fresh);
+  const prompt = await conversationEngine.getCurrentStepPrompt(fresh, userId);
+  return prompt ? collectResponse(prompt) : [{ type: 'text', text: '↩️ Retomamos. ¿En qué lote va?' }];
+}
+
+/**
+ * Cierre de cada turno para las tarjetas "¿Confirmo?": avisa si una quedó
+ * esperando porque llegó otra, vuelve a mostrar la que esperaba cuando se cerró
+ * la actual, y pone el id de la tarjeta en sus botones.
+ */
+async function finishCards(items: BotResponseItem[], phone: string): Promise<BotResponseItem[]> {
+  const out = [...items];
+  const parked = pendingStore.takeParkNotice(phone);
+  if (parked) {
+    out.unshift({ type: 'text', text: `⏳ Quedó esperando tu confirmación: *${describeCard(parked)}*. No lo guardé; te lo vuelvo a mostrar cuando termines con este.` });
+  }
+  if (pendingStore.takeResurfaced(phone)) {
+    const waiting = pendingStore.get(phone);
+    if (waiting && isCompletePending(waiting as any)) {
+      const { renderPendingCard } = await import('../domain/financial/financial.handler.js');
+      out.push(...collectResponse(renderPendingCard(waiting as any)));
+      pendingStore.touch(phone);
+    }
+  }
+  // Si en este turno salió la tarjeta actual (re-mostrada), sigue esperando respuesta.
+  if (out.some(i => i.interactive?.type === 'buttons' && (i.interactive.buttons ?? []).some(b => b.id === 'confirm_pending' || b.id === 'confirm_pending' + pendingStore.buttonSuffix(phone)))) {
+    pendingStore.touch(phone);
+  }
+  pendingStore.endTurn(phone);
+  const suffix = pendingStore.buttonSuffix(phone);
+  if (!suffix) return out;
+  return out.map((item) => {
+    const buttons = item.interactive?.type === 'buttons' ? item.interactive.buttons : null;
+    if (!buttons?.some(b => b.id === 'confirm_pending' || b.id === 'cancel_pending')) return item;
+    return {
+      ...item,
+      interactive: {
+        ...item.interactive!,
+        buttons: buttons.map(b => (b.id === 'confirm_pending' || b.id === 'cancel_pending' ? { ...b, id: `${b.id}${suffix}` } : b)),
+      },
+    } as BotResponseItem;
+  });
+}
+
 // ============================================================
 // Formulario conversacional (WhatsApp sin Flows) — dependencias del pipeline
 // ============================================================
@@ -859,7 +962,7 @@ async function resolveCollectorsBeforeForm(ctx: ChannelContext): Promise<BotResp
   const notes: BotResponseItem[] = [];
   const flowCtx = await conversationEngine.getFlowContext(ctx.userId);
   if (flowCtx.state !== 'idle') {
-    notes.push(...(await commitFinancialFlowFieldLevel(ctx.userId, flowCtx, ctx.phone)));
+    notes.push(...(await parkFlowAsDraft(ctx.userId, flowCtx, ctx.phone)));
     await conversationEngine.clearFlow(ctx.userId);
     console.log(`[INTERCEPT] flow ${flowCtx.state} cerrado: el usuario abrió un formulario`);
   }
@@ -974,6 +1077,7 @@ async function processTextMessageWithReplay(
   } catch (err) {
     console.warn(`[proactive] entrega de diferidos falló para user ${ctx.userId}: ${(err as Error).message}`);
   }
+  items = await finishCards(items, ctx.phone);
   if (deferredNotices.length > 0) {
     const last = items[items.length - 1];
     const tail = last?.type === 'interactive' ? [last] : [];
@@ -1190,7 +1294,7 @@ async function processTextMessageInner(
       // Flujo vencido + mensaje nuevo: el registro completo (monto y categoría)
       // se guarda a nivel campo y el mensaje se PROCESA. Antes se descartaban
       // los dos y solo se avisaba el vencimiento (CONV-20).
-      const committed = await commitFinancialFlowFieldLevel(userId, flowCtx, phone);
+      const committed = await parkFlowAsDraft(userId, flowCtx, phone);
       await conversationEngine.clearFlow(userId);
       if (committed.length > 0 || !isCancelIntent(text)) {
         console.log(`[INTERCEPT] flujo ${expiredFlowState} vencido: ${committed.length > 0 ? 'guardado a nivel campo y ' : ''}proceso el mensaje nuevo`);
@@ -1271,7 +1375,7 @@ async function processTextMessageInner(
         // just because the user pivoted to another action/query. Commit it at
         // field level first, then process the pivot. (P1-B: also abandon for a
         // correction/delete of a DIFFERENT item so the flow doesn't eat it.)
-        const committed = await commitFinancialFlowFieldLevel(userId, flowCtx, phone);
+        const committed = await parkFlowAsDraft(userId, flowCtx, phone);
         await conversationEngine.clearFlow(userId);
         if (committed.length > 0) {
           const rest = await processTextMessageInner(text, ctx);
@@ -1337,8 +1441,8 @@ async function processTextMessageInner(
       // — UNLESS the flow is asking for a plot and the user answered with one
       // ("lote A"), in which case it's the answer, not an interruption.
       if (!isPlotAnswerToFlow(flowCtx.state, text) && (effectiveCmd || intentClassifier.detectsFinancialIntent(text))) {
-        // P0-2: commit a complete expense/income at field level before abandoning.
-        const committed = await commitFinancialFlowFieldLevel(userId, flowCtx, phone);
+        // Lo completo queda como borrador (no se guarda solo ni se pierde).
+        const committed = await parkFlowAsDraft(userId, flowCtx, phone);
         await conversationEngine.clearFlow(userId);
         if (committed.length > 0) {
           const rest = await processTextMessageInner(text, ctx);
@@ -1905,6 +2009,9 @@ ${ask}` }];
 
   // --- Check pending confirmation ---
   const pending = pendingStore.get(phone);
+  // La tarjeta es "lo que el bot acaba de preguntar" solo si se mostró en el
+  // turno anterior: recién ahí un texto suelto se lee como respuesta a ella.
+  const cardAwaiting = pendingStore.isAwaitingReply(phone);
 
   // --- Pending correction intercept (category / amount mid-confirmation) ---
   // Before sending to the classifier: if there's a pending gasto/ingreso and
@@ -1913,7 +2020,7 @@ ${ask}` }];
   // confirmation. Without this the message falls through to the agent which
   // is sometimes inconsistent (CR02: it asked for a plot instead of fixing
   // the category).
-  if (pending && (pending.type === 'expense' || pending.type === 'income')) {
+  if (pending && cardAwaiting && (pending.type === 'expense' || pending.type === 'income')) {
     const { tryApplyPendingCorrection } = await import('../middleware/pending-correction-interceptor.js');
     const corr = tryApplyPendingCorrection(text, pending as any);
     if (corr.applied) {
@@ -1921,7 +2028,7 @@ ${ask}` }];
       if (resolved.reject) {
         return [{ type: 'text', text: resolved.reject }, ...collectResponse((await import('../domain/financial/financial.handler.js')).renderPendingCard(pending as any))];
       }
-      pendingStore.set(phone, corr.updatedPending as any);
+      pendingStore.update(phone, corr.updatedPending as any);
       conversationLogger.log(userId, phone, text, corr.body!, 'command', 'correction_applied', null, null, false, Date.now() - startTime, true, 1.0, null, null, ctx.channel).catch(() => {});
       return [
         { type: 'interactive', interactive: { type: 'buttons', body: corr.body!, buttons: corr.buttons! } } as BotResponseItem,
@@ -1934,7 +2041,7 @@ ${ask}` }];
   // confirmación. Antes se auto-guardaba ("Guardé el gasto antes de seguir") y
   // la pregunta no confirmaba nada (QA siembra/cosecha 9 sep 2026). Un WRITE
   // nuevo sigue guardando el anterior con aviso — perderlo sería peor.
-  if (pending && isCompletePending(pending as any) && !intentClassifier.detectsFinancialIntent(text)) {
+  if (pending && cardAwaiting && isCompletePending(pending as any) && !intentClassifier.detectsFinancialIntent(text)) {
     const trivialCmd = intentClassifier.parseCommandOnly(text);
     // "ok" / "listo" con la tarjeta abierta: se vuelve a mostrar para que la
     // confirme con el botón. Antes contestaba "👍" sin guardar nada y el usuario
@@ -1954,20 +2061,16 @@ ${ask}` }];
       const d = ((pending as any).data ?? {}) as Record<string, unknown>;
       const prevDesc = String(d.description ?? '').trim();
       const updated = { ...(pending as any), data: { ...d, description: prevDesc ? `${prevDesc} — ${text.trim()}` : text.trim() } };
-      pendingStore.set(phone, updated);
+      pendingStore.update(phone, updated);
       console.log(`[INTERCEPT] comentario con tarjeta ${(pending as any).type} abierta → detalle: "${text.slice(0, 40)}"`);
       const { renderPendingCard } = await import('../domain/financial/financial.handler.js');
       return [{ type: 'text', text: '📝 Lo agregué como detalle.' }, ...collectResponse(renderPendingCard(updated))];
     }
-    const readOnlyTrivial = !!trivialCmd && READ_ONLY_TRIVIAL_COMMANDS.has(trivialCmd.command as string);
-    if (isReadOnlyQuery(text) || readOnlyTrivial) {
-      console.log(`[INTERCEPT] consulta read-only con confirmación pendiente (${(pending as any).type}): respondo y re-muestro la tarjeta`);
-      pendingStore.clear(phone);
-      const rest = await processTextMessageInner(text, ctx);
-      // Restaurar solo si la consulta no dejó otra tarjeta.
-      if (!pendingStore.get(phone)) pendingStore.set(phone, pending);
-      const { renderPendingCard } = await import('../domain/financial/financial.handler.js');
-      return [...rest, ...collectResponse(renderPendingCard(pending))];
+    // Una consulta se responde y la tarjeta sigue esperando, sin volver a
+    // mostrarse (nov 2026): no se guarda ni se pierde, y sus botones siguen
+    // sirviendo porque cada tarjeta tiene su id.
+    if (isReadOnlyQuery(text) || (!!trivialCmd && READ_ONLY_TRIVIAL_COMMANDS.has(trivialCmd.command as string))) {
+      console.log(`[INTERCEPT] consulta con confirmación pendiente (${(pending as any).type}): respondo; la tarjeta sigue esperando`);
     }
   }
 
@@ -1976,30 +2079,14 @@ ${ask}` }];
   // confirming. Auto-commit it first, then process the pivot. (A pivot to a NEW
   // financial action is left to the replaced-pending path, which keeps the
   // "guardé el anterior y registro el nuevo" UX.)
+  // Ninguna acción nueva confirma lo anterior (nov 2026): antes un registro de
+  // otro dominio con la tarjeta abierta la guardaba sola ("Guardé el gasto antes
+  // de seguir"). Ahora la tarjeta queda esperando su confirmación y el mensaje
+  // nuevo se procesa aparte.
   if (pending && isCompletePending(pending as any)
       && ((looksLikeNewActionOrQuery(text) && !intentClassifier.detectsFinancialIntent(text))
           || isOtherItemCorrectionOrDelete(text))) {
-    pendingStore.clear(phone);
-    const kind = (pending as any).type === 'income' ? 'ingreso' : 'gasto';
-    // "Guardé" SOLO si se guardó: antes el error se tragaba y el aviso salía igual.
-    let failure: string | null = null;
-    try {
-      const done = await financialHandler.handleConfirm(userId, pending, settings, user);
-      const first = done?.messages?.[0] ?? '';
-      if (/^(?:⚠️|❌)/.test(first)) failure = first;
-    } catch (err) {
-      console.error('[INTERCEPT] guardado previo al cambio de tema FALLÓ:', (err as Error).message);
-      logError('message-pipeline', 'PIVOT_COMMIT_FAILED', err as Error, { userId });
-      failure = `⚠️ No pude guardar el ${kind} que estaba esperando confirmación.`;
-    }
-    const rest = await processTextMessageInner(text, ctx);
-    if (!failure) return [{ type: 'text', text: `💡 Guardé el ${kind} antes de seguir.` }, ...rest];
-    // Sin acceso al lugar no tiene arreglo; un error al guardar se puede reintentar.
-    const retry = !failure.includes('no guardé') && !pendingStore.get(phone);
-    if (!retry) return [{ type: 'text', text: failure }, ...rest];
-    pendingStore.set(phone, pending);
-    const { renderPendingCard } = await import('../domain/financial/financial.handler.js');
-    return [...rest, { type: 'text', text: failure }, ...collectResponse(renderPendingCard(pending as any))];
+    console.log(`[INTERCEPT] acción nueva con tarjeta ${(pending as any).type} abierta: NO se guarda sola, sigue esperando confirmación`);
   }
 
   const lowConfidenceThreshold = (await getSettingNumber('CONFIDENCE_LOW_CONFIRM')) ?? 0.70;
@@ -2130,6 +2217,14 @@ ${ask}` }];
     }
     const dupReply = nonFinancialPendingReply(pending);
     if (dupReply) return dupReply;
+    // Un "sí" suelto cuando la tarjeta NO es lo último que se mostró (hubo
+    // otros mensajes en el medio) no confirma a ciegas: se vuelve a mostrar.
+    if (!cardAwaiting && isCompletePending(pending as any)) {
+      console.log(`[INTERCEPT] "${text.slice(0, 20)}" con una tarjeta ${pending.type} que no es lo último mostrado — la re-muestro en vez de confirmar`);
+      pendingStore.touch(phone);
+      const { renderPendingCard } = await import('../domain/financial/financial.handler.js');
+      return collectResponse(renderPendingCard(pending as any));
+    }
     pendingStore.clear(phone);
     const response = await financialHandler.handleConfirm(userId, pending, settings, user);
     applySideEffects(response.sideEffects, phone);
@@ -2223,7 +2318,7 @@ ${ask}` }];
       title: c.label.slice(0, 20),
     }));
     conversationLogger.log(userId, phone, text, 'Disambiguation', 'ambiguous', null, null, null, aiUsed, Date.now() - startTime, true, confidence, toolCallsData, agentMode, ctx.channel).catch(() => {});
-    return [interactiveButtons('¿Que queres hacer?', buttons)];
+    return [interactiveButtons('¿Qué querés hacer?', buttons)];
   }
 
   // --- Route commands ---
@@ -2935,23 +3030,43 @@ export async function handleInteractiveReply(
   // Un token de botón solo lo puede usar el usuario al que se le mandó.
   return runWithCallbackOwner(ctx.userId, async () => {
     await hydrateCallbackState(ctx.userId);
-    try { return mergePromptItems(await handleInteractiveReplyInner(callbackId, ctx)); }
+    try { return mergePromptItems(await finishCards(await handleInteractiveReplyInner(callbackId, ctx), ctx.phone)); }
     finally { await flushCallbackState(); }
   });
 }
 
 async function handleInteractiveReplyInner(
-  callbackId: string,
+  rawCallbackId: string,
   ctx: ChannelContext,
 ): Promise<BotResponseItem[]> {
   const { userId, user, settings, phone } = ctx;
+  let callbackId = rawCallbackId;
   console.log(`[${ctx.channel}] INTERACTIVE:`, callbackId);
+
+  // Confirmar / Cancelar de una tarjeta: el botón apunta a SU tarjeta (por id,
+  // o la única que salió con botones sin id). Se la pasa al frente y sigue el
+  // camino de siempre. Antes un botón viejo confirmaba la tarjeta más nueva.
+  const cardTap = callbackId.match(/^(confirm_pending|cancel_pending)(?:_([a-z0-9]+))?$/);
+  if (cardTap && pendingStore.count(phone) > 0) {
+    if (!pendingStore.select(phone, cardTap[2] ?? null)) {
+      console.log(`[INTERCEPT] botón de una tarjeta que ya no está pendiente: user=${userId} ${callbackId}`);
+      return [{ type: 'text', text: 'ℹ️ Ese registro ya no está pendiente: lo confirmaste o lo cancelaste antes. No hice ningún cambio.' }];
+    }
+    callbackId = cardTap[1];
+  } else if (cardTap) {
+    callbackId = cardTap[1];
+  }
 
   conversationObserver.logMessageReceived(userId, { phone, messageType: 'interactive', messageLength: callbackId.length });
 
   {
     const blocked = await blockedAccountReply(userId, `tap=${callbackId}`);
     if (blocked) return blocked;
+  }
+
+  {
+    const draftReply = await handleFlowDraftTap(callbackId, ctx);
+    if (draftReply) return draftReply;
   }
 
   // Baja de la cuenta por chat (delete_my_account). Antes del corte por prueba
@@ -2961,7 +3076,8 @@ async function handleInteractiveReplyInner(
     const raw = callbackPayloadStore.get(callbackId.slice('acct_del_ok_'.length));
     let payload: { kind?: string; userId?: number } | null = null;
     try { payload = raw ? JSON.parse(raw) : null; } catch { payload = null; }
-    if (payload?.kind !== 'delete_my_account' || Number(payload.userId) !== Number(userId)) {
+    const fresh = typeof (payload as { ts?: number } | null)?.ts === 'number' && Date.now() - (payload as { ts: number }).ts <= 10 * 60_000;
+    if (payload?.kind !== 'delete_my_account' || Number(payload.userId) !== Number(userId) || !fresh) {
       console.log(`[INTERCEPT] acct_del_ok vencido o ajeno user=${userId}`);
       return [{ type: 'text', text: '⏰ Ese botón ya venció — *no borré nada*. Si querés dar de baja tu cuenta, escribí *borrar mi cuenta*.' }];
     }
@@ -3238,7 +3354,7 @@ async function handleInteractiveReplyInner(
     }
     const amount = Number(amtPick[1]);
     const updated = { ...pendingTx, data: { ...(pendingTx.data as Record<string, unknown>), amount } };
-    pendingStore.set(phone, updated as any);
+    pendingStore.update(phone, updated as any);
     const { renderCorrectionCard } = await import('../middleware/pending-correction-interceptor.js');
     const card = renderCorrectionCard(updated);
     return [

@@ -1061,42 +1061,26 @@ let flowReminderTickRunning = false;
  */
 export async function closeExpiredFlow(flow, startedAtMs) {
   const { withUserLock } = await import("../middleware/user-lock.js");
-  const { conversationEngine, commitFinancialFlowFieldLevel } = await import("./message-pipeline.js");
-  const key = flow.phone ? `wa:${flow.phone}` : `tg:${flow.telegramId}`;
+  const { conversationEngine, parkFlowAsDraft } = await import("./message-pipeline.js");
+  // La clave del lock es la del canal del flujo: con la de WhatsApp fija, un
+  // usuario de Telegram podía cruzarse con su propio mensaje.
+  const key = flow.phone && !String(flow.phone).startsWith("tg_") ? `wa:${flow.phone}` : `tg:${flow.telegramId}`;
   const phone = flow.phone || `tg_${flow.telegramId}`;
   let result = { expired: false, text: null };
   await withUserLock(key, async () => {
     const ctx = await conversationEngine.getFlowContext(flow.userId);
     if (ctx.state === "idle" || !conversationEngine.isExpired(ctx)) return;
-    // Para ofrecer «Deshacer»: qué fila aparece al guardar (bajo el lock).
-    const table = (ctx.originFlow ?? ctx.state) === "income_flow" ? "incomes" : "expenses";
-    const lastId = async () => Number((await pool.query(`SELECT COALESCE(MAX(id), 0) AS id FROM ${table} WHERE user_id = $1`, [flow.userId])).rows[0].id);
-    const before = await lastId();
-    const items = await commitFinancialFlowFieldLevel(flow.userId, ctx, phone);
-    // La fila nueva CON el monto del flujo: una carga simultánea por el panel o
-    // por otro canal no puede quedar apuntada por el botón.
-    // En el flujo el monto viaja como {amount, currency} o como número.
-    const raw = (ctx.data ?? {}).amount;
-    const amount = Number(raw && typeof raw === "object" ? raw.amount : raw);
-    const { rows: mine } = await pool.query(
-      `SELECT id FROM ${table} WHERE user_id = $1 AND id > $2 AND amount = $3 ORDER BY id LIMIT 1`,
-      [flow.userId, before, Number.isFinite(amount) ? amount : -1],
-    );
-    const saved = mine[0] ? Number(mine[0].id) : null;
+    // El gasto/ingreso que no se terminó NO se guarda solo (nov 2026): queda
+    // como borrador y se le avisa, con botones para retomarlo, guardarlo sin
+    // lote o descartarlo. Antes se guardaba a nivel campo sin confirmación.
+    const items = await parkFlowAsDraft(flow.userId, ctx, phone);
     await conversationEngine.clearFlow(flow.userId);
     result = { expired: true, text: null };
-    if (items.length === 0) return;
-    console.log(`[flow-reminder] [INTERCEPT] flujo vencido de user ${flow.userId} (${startedAtMs}): cierre con registro completo`);
-    // El aviso sale como texto: se saca la oferta de stock, que sin botones
-    // sería una pregunta que no se puede contestar.
-    const body = items.map(i => i.text || i.interactive?.body || "").join("\n\n").replace(/\n\s*📦[\s\S]*$/, "").trim();
-    const failed = body.startsWith("⚠️ No pude guardar");
-    result.text = failed ? body : `⏱️ No contestaste a tiempo, así que lo guardé con lo que tenía.\n\n${body}`;
-    // El id va en el botón (no un token en memoria): el tap puede llegar horas
-    // después o tras un deploy. La baja valida dueño y antigüedad.
-    if (!failed && saved) {
-      result.buttons = [{ id: `undo_auto_${table === "incomes" ? "income" : "expense"}_${saved}`, title: "Deshacer" }];
-    }
+    const draft = items[0]?.interactive;
+    if (!draft) return;
+    console.log(`[flow-reminder] [INTERCEPT] flujo vencido de user ${flow.userId} (${startedAtMs}): queda como borrador, sin guardar`);
+    result.text = `⏱️ No llegaste a terminarlo, así que *no lo registré*.\n\n${draft.body}`;
+    result.buttons = draft.buttons;
   });
   return result;
 }

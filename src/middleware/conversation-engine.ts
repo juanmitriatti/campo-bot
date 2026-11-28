@@ -51,7 +51,7 @@ export function buildTimeoutMessage(flowState: string): string {
 
 export function buildHalflifeMessage(flowState: string): string {
   const label = getFlowLabel(flowState);
-  return `👋 ¿Seguís ahí? Tu ${label} quedó a medias. Respondé o escribí *cancelar* para salir.`;
+  return `👋 ¿Seguís ahí? Tu ${label} quedó a medias y todavía *no está registrado*. Respondé para terminarlo o escribí *cancelar*. Si no contestás, no lo guardo: queda como borrador.`;
 }
 
 /**

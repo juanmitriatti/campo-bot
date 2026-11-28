@@ -136,14 +136,20 @@ describe.skipIf(!dbAvailable)('respuestas y preguntas', () => {
     expect(await count(`SELECT COUNT(*)::int AS n FROM harvest_loads hl JOIN domain_events de ON de.id = hl.domain_event_id WHERE de.user_id = $1 AND hl.driver_name = 'Pedro'`)).toBe(1);
   });
 
-  it('CONV-6: en "¿Algún detalle?" de un gasto completo, una acción nueva guarda el gasto y procesa la acción', async () => {
+  it('CONV-6: en "¿Algún detalle?" de un gasto completo, una acción nueva se procesa y el gasto queda como BORRADOR (no se pierde ni se guarda solo)', async () => {
+    const { flowDraftStore } = await import('../../../services/message-pipeline.js');
     h.fakeAgent.enqueueTool('log_expense', { amount: 33000, category: 'Combustible', description: 'gasoil', field: 'La Loma' });
     await h.send('gasté 33 mil en gasoil');
     await h.tap('flow_plot_norte');
     h.fakeAgent.enqueueTool('sow_crop', { crop: 'maíz', plot: 'Sur', field: 'La Loma' });
-    await h.send('sembré maíz en el Sur');
+    const out = h.allText(await h.send('sembré maíz en el Sur'));
     expect(await plantings()).toBe(1);
-    expect(await count(`SELECT COUNT(*)::int AS n FROM expenses WHERE user_id = $1 AND amount = 33000 AND deleted_at IS NULL`)).toBe(1);
+    expect(out).toMatch(/sin registrar[\s\S]*Combustible[\s\S]*33\.000/);
+    const sql = `SELECT COUNT(*)::int AS n FROM expenses WHERE user_id = $1 AND amount = 33000 AND deleted_at IS NULL`;
+    expect(await count(sql)).toBe(0);
+    const draft = flowDraftStore.get(h.phone)!;
+    await h.tap(`flowdraft_save_${draft.id}`);
+    expect(await count(sql)).toBe(1);
   });
 
   it('FIN-32 / FIN-36: "ok" re-muestra la tarjeta y un comentario se suma como detalle', async () => {
