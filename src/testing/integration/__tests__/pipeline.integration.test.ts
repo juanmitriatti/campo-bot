@@ -5904,7 +5904,7 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
       const items = await buy();
       expect(items, h.allText(items)).toHaveLength(1);
       const flow = flowOf(items)!;
-      expect(flow.body).toMatch(/3 vaca \+ 5 ternero/);
+      expect(flow.body).toMatch(/3 vacas \+ 5 terneros/);
       expect(flow.flow.data.animals_1_category_init).toBe('ternero');
       expect(flow.flow.data.show_animals_1).toBe(true);
       expect(await groups()).toEqual([]);
@@ -6127,6 +6127,27 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
       expect(out).toMatch(/La Esperanza/);
       expect(await h.q(`SELECT 1 FROM user_categories WHERE user_id = $1 AND name ILIKE 'mis campos'`, [h.userId])).toHaveLength(0);
       expect(pendingCategoryStore.get(h.phone)).toBeFalsy();
+    });
+    it('paso 3: con la pregunta de precio abierta, «perdón, eran 20» corrige la cantidad y no guarda un precio de $20', async () => {
+      await h.q(`DELETE FROM expenses WHERE user_id = $1`, [h.userId]);
+      await h.q(`DELETE FROM livestock_movements WHERE user_id = $1`, [h.userId]);
+      await h.q(`DELETE FROM livestock_groups WHERE user_id = $1`, [h.userId]);
+      const heads = async () => (await h.q(`SELECT count::int AS n FROM livestock_groups WHERE user_id = $1 AND count > 0`, [h.userId])).map(r => r.n);
+      const spent = async () => (await h.q(`SELECT amount::float AS a FROM expenses WHERE user_id = $1 AND deleted_at IS NULL`, [h.userId])).map(r => r.a);
+      h.fakeAgent.enqueueTool('add_livestock', { category: 'vaca', count: 9, plot: 'Norte', is_purchase: true });
+      await h.send('compré 9 vacas en el Norte');
+      const fixed = h.allText(await h.send('perdón, eran 20'));
+      expect(fixed).toMatch(/9 → 20/);
+      expect(await heads()).toEqual([20]);
+      expect(await spent()).toEqual([]);
+      // El precio de OTRA categoría no se le pone a las vacas, y la pregunta sigue abierta.
+      h.fakeAgent.enqueueTool('set_livestock_price', { category: 'toro', unit_price_ars: 2000000 });
+      await h.send('los toros salieron 2 palos c/u');
+      expect(await spent()).toEqual([]);
+      // "no, eran 900" sin nombrar el animal, sobre 20 vacas, es plata: no pasa a 900 cabezas.
+      await h.send('no, eran 900');
+      expect(await heads()).toEqual([20]);
+      expect(await spent()).toEqual([18000]);
     });
   });
 });

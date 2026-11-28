@@ -2,6 +2,7 @@
 // una transacción y con un solo claim del token, o ninguna. Cada fila se valida
 // y se registra por el MISMO camino que el formulario simple.
 import { pool, withTransaction } from '../config/db.js';
+import { headsLabel } from '../domain/livestock/livestock.types.js';
 import { formSessionService, type FormSessionRow } from '../services/form-session.service.js';
 import { domainRouter, userRepository, pendingActStore, applySideEffects } from '../services/message-pipeline.js';
 import { buildFormCommand } from './form-commands.js';
@@ -137,7 +138,7 @@ export async function submitLivestockRows(
     const p = r.sideEffects?.setPendingActivity;
     if (!p) return [];
     const perKg = !!p.missing?.includes('quantity');
-    const what = `${commands[i].cmd.count} ${String(commands[i].cmd.category)}`;
+    const what = headsLabel(commands[i].cmd.count as number, commands[i].cmd.category as string);
     return [{
       command: p.command,
       data: p.data,

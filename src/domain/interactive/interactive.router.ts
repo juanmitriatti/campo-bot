@@ -429,10 +429,13 @@ export class InteractiveRouter {
       return { type: 'command', data: { command: 'livestock_post_repro_hist', groupId: callbackId.slice('lv_post_repro_hist_'.length) } };
     }
     if (callbackId === 'lv_post_resumen_mes') {
-      return { type: 'command', data: { command: 'livestock_post_resumen_mes' } };
+      // El botón HACE lo que dice (antes contestaba "escribí resumen del mes").
+      return { type: 'command', data: { command: 'financial_report', period: 'month' } };
     }
     if (callbackId.startsWith('lv_post_undo_movement_')) {
-      return { type: 'command', data: { command: 'livestock_post_undo_movement', movementId: callbackId.slice('lv_post_undo_movement_'.length) } };
+      // Por el mismo camino que "deshacé eso" escrito: muestra el movimiento y
+      // pide confirmación (antes revertía con un toque, sin preguntar).
+      return { type: 'command', data: { command: 'revert_livestock_movement', movementId: callbackId.slice('lv_post_undo_movement_'.length) } };
     }
     if (callbackId.startsWith('lv_post_undo_event_')) {
       return { type: 'command', data: { command: 'livestock_post_undo_event', eventId: callbackId.slice('lv_post_undo_event_'.length) } };

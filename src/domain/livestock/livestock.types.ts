@@ -46,6 +46,18 @@ export const LIVESTOCK_CATEGORY_LABEL: Record<LivestockCategory, string> = {
   buey: 'Buey',
 };
 
+/**
+ * "20 vacas", "1 ternero", "3 bueyes": cantidad + categoría en el número que
+ * corresponde. Antes cada mensaje armaba "${count} ${category}" y salía
+ * "20 vaca", "3 vaca + 5 ternero".
+ */
+export function headsLabel(count: number | string | null | undefined, category: string | null | undefined): string {
+  const n = Number(count);
+  const base = String(category ?? 'animal').toLowerCase().trim() || 'animal';
+  const plural = /s$/.test(base) ? base : /[aeiou]$/.test(base) ? `${base}s` : `${base}es`;
+  return `${Number.isFinite(n) ? n : count} ${n === 1 ? base.replace(/(?<=[aeiou])s$/, '') : plural}`;
+}
+
 /** Pretty label + emoji for a movement */
 export const LIVESTOCK_MOVEMENT_LABEL: Record<LivestockMovementType, { emoji: string; label: string }> = {
   entrada: { emoji: '📥', label: 'Entrada' },

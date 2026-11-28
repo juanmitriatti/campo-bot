@@ -21,6 +21,7 @@
  */
 
 import { DESTRUCTIVE_COMMANDS } from '../domain/destructive-commands.js';
+import { headsLabel } from '../domain/livestock/livestock.types.js';
 import { formatMoney } from '../utils/format-money.js';
 import { resolveDeleteTarget } from './delete-target.js';
 import { logError } from './error-logger.js';
@@ -1835,12 +1836,28 @@ async function processTextMessageInner(
       // inventory at the wrong (uncorrected) count.
       const lvMovementId = (pendingAct.data as Record<string, unknown> | undefined)?.movementId;
       if (pendingAct.command === 'set_livestock_price' && lvMovementId) {
-        let newCount = extractCountCorrection(text);
-        // "no, eran 1800" / "no, 2000" sin nombrar el animal es el precio.
-        if (newCount != null && newCount >= 1000 && headNumbersInText(text).length === 0) {
-          console.log(`[INTERCEPT] "${text.slice(0, 30)}" con la pregunta de precio: es precio, no cantidad`);
-          newCount = null;
+        const { rows: mvRows } = await pool.query(
+          `SELECT m.count, g.category::text AS category FROM livestock_movements m
+             LEFT JOIN livestock_groups g ON g.id = COALESCE(m.dest_group_id, m.source_group_id)
+            WHERE m.id = $1 AND m.user_id = $2`,
+          [lvMovementId, userId],
+        );
+        // Qué es este mensaje para la pregunta de precio lo decide UNA regla
+        // (price-question.ts), no condiciones sueltas acá.
+        const { classifyPriceAnswer } = await import('../domain/livestock/price-question.js');
+        const answer = classifyPriceAnswer(text, mvRows[0] as { count: number; category: string | null } | undefined);
+        console.log(`[INTERCEPT] pregunta de precio de hacienda: "${text.slice(0, 30)}" → ${answer.kind}`);
+        if (answer.kind === 'other_category') {
+          // No es la respuesta a esta pregunta: se procesa aparte y la pregunta sigue abierta.
+          pendingActStore.clear(phone);
+          const rest = await processTextMessageInner(text, ctx);
+          if (!pendingActStore.get(phone)) {
+            pendingActStore.set(phone, { ...pendingAct, timestamp: Date.now() });
+            if (pendingAct.askPrompt) rest.push({ type: 'text', text: pendingAct.askPrompt });
+          }
+          return rest;
         }
+        const newCount = answer.kind === 'count_correction' ? answer.count : null;
         if (newCount != null) {
           const corr = await new LivestockRepository().correctUnpricedMovementCount(userId, String(lvMovementId), newCount);
           if (corr && typeof corr === 'object' && 'insufficient' in corr) {
@@ -1854,7 +1871,7 @@ ${ask}` }];
             console.log(`[INTERCEPT] livestock count correction during price-pending: movement=${lvMovementId} ${corr.oldCount}→${corr.newCount} (${corr.category})`);
             const verb = corr.movementType === 'entrada' ? 'compra' : 'venta';
             const ask = pendingAct.askPrompt || '💰 ¿A cuánto fue? (precio por cabeza)';
-            const msg = `✏️ Corregí la ${verb} a *${corr.newCount} ${corr.category}*.\n\n${ask}`;
+            const msg = `✏️ Corregí la ${verb}: *${corr.oldCount} → ${headsLabel(corr.newCount, corr.category)}*.\n\n${ask}`;
             // Keep the price-pending intact (still need the price for the new
             // count). Observability via the [INTERCEPT] log above; the response
             // is returned to the user so this is not a silent mute.

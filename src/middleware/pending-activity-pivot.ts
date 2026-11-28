@@ -1,4 +1,5 @@
 import { pool } from '../config/db.js';
+import { headsLabel } from '../domain/livestock/livestock.types.js';
 import type { PendingActivity } from './pending-activities.js';
 import type { AgronomyHandler } from '../domain/agronomy/agronomy.handler.js';
 import type { UserId } from '../types/index.js';
@@ -47,7 +48,7 @@ export async function describeCancelled(userId: UserId, pending: Pick<PendingAct
     const m = rows[0] as { count: number; movement_type: string; category: string | null } | undefined;
     if (m) {
       const verb = m.movement_type === 'entrada' ? 'La compra' : 'La venta';
-      return `${verb} de ${m.count} ${(m.category ?? 'animales').toLowerCase()} *ya está registrada*; queda sin precio.`;
+      return `${verb} de ${headsLabel(m.count, m.category)} *ya está registrada*; queda sin precio.`;
     }
     return 'La operación de hacienda *ya está registrada*; queda sin precio.';
   }
@@ -75,7 +76,7 @@ async function describeUnpriced(userId: UserId, pending: PendingActivity): Promi
     const m = rows[0] as { count: number; movement_type: string; category: string | null } | undefined;
     if (!m) return null;
     const verb = m.movement_type === 'entrada' ? 'la compra' : 'la venta';
-    const what = `${m.count} ${(m.category ?? 'animales').toLowerCase()}`;
+    const what = headsLabel(m.count, m.category);
     // Precio por kilo ya dicho: lo que faltaba era el peso.
     if ((pending.missing ?? []).includes('quantity')) {
       return `💡 ${verb === 'la compra' ? 'La compra' : 'La venta'} de ${what} quedó *sin importe*: me faltaban los kilos totales para calcularlo.`;

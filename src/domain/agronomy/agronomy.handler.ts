@@ -412,7 +412,7 @@ export class AgronomyHandler {
       messages: [],
       interactive: {
         type: 'buttons' as const,
-        body: `⚠️ El ${plotLabel} ya tiene *${cap(active.crop)}* activa${haNote}${dateNote}.\n\n¿Reemplazo esa campaña por *${cap(newCrop)}*?\n\n_Si va en otro lote, decime: "sembré ${cmd.hectares ?? 'X'} ha de ${newCrop} en lote <nombre>". Si el ${active.crop.toLowerCase()} ya se cosechó, contame la cosecha primero y la ${newCrop.toLowerCase()} queda como la campaña siguiente._`,
+        body: `⚠️ El ${plotLabel} ya tiene *${cap(active.crop)}* activa${haNote}${dateNote}.\n\n¿Reemplazo esa campaña por *${cap(newCrop)}*?\n\n_Si va en otro lote, decime en cuál. Si ese cultivo ya se cosechó, contame primero la cosecha y el nuevo queda como la campaña siguiente._`,
         buttons: [
           { id: `sow_replace_${token}`, title: 'Sí, reemplazar' },
           { id: 'sow_replace_cancel', title: 'No, cancelar' },
@@ -620,7 +620,7 @@ export class AgronomyHandler {
       const label = formatSeasonLabel(harvested.season_year, harvested.season_type);
       let msg = `🌾 *Cosecha registrada*\n*${cap(crop)}* en ${plotLabel}\n📅 Campaña ${label}`;
       msg += `\n\n💡 _¿Ya sabés cuánto rindió? Decime "rindió 8.000 kg/ha" o "sacamos 120 tn" — o pasame las cargas por camión (chofer y kilos)._`;
-      msg += `\n\n🏁 _La campaña sigue abierta por si te falta cargar algo (cargas, gastos). Cuando esté todo, decime *"cerrar campaña"*: se archiva el ciclo con sus números (rinde, gastos, margen) y el lote queda listo para la próxima siembra._`;
+      msg += `\n\n🏁 _La campaña sigue abierta. Cuando termines de cargar, decime *cerrar campaña*._`;
       return { messages: [msg] };
     }
 
@@ -3096,12 +3096,18 @@ export class AgronomyHandler {
             : `🚛 *${loads.length} carga${loads.length > 1 ? 's' : ''} registrada${loads.length > 1 ? 's' : ''} en ${plotLabel}:*`;
           // Average humidity if at least one load reports it
           const humidityLoads = loads.filter(l => l.humidity_pct != null);
+          // Promedio PONDERADO por kilos, y solo se llama "promedio" cuando están
+          // todas las cargas: con una de dos, "promedio 16%" era el dato de un camión.
+          const humKg = humidityLoads.reduce((a, l) => a + Number(l.weight_kg ?? 0), 0);
           const avgHumidity = humidityLoads.length > 0
-            ? Math.round(humidityLoads.reduce((a, l) => a + Number(l.humidity_pct), 0) / humidityLoads.length * 10) / 10
+            ? Math.round((humKg > 0
+              ? humidityLoads.reduce((a, l) => a + Number(l.humidity_pct) * Number(l.weight_kg ?? 0), 0) / humKg
+              : humidityLoads.reduce((a, l) => a + Number(l.humidity_pct), 0) / humidityLoads.length) * 10) / 10
             : null;
-          const humLine = avgHumidity != null
-            ? `\n💧 *Humedad promedio:* ${avgHumidity}% (${humidityLoads.length}/${loads.length} cargas)`
-            : '';
+          const humLine = avgHumidity == null ? ''
+            : humidityLoads.length === loads.length
+              ? `\n💧 *Humedad promedio:* ${avgHumidity}%`
+              : `\n💧 *Humedad:* ${avgHumidity}% en ${humidityLoads.length} de ${loads.length} cargas (falta el dato de las otras)`;
 
           const thisBatchLabel = isAppend ? '*En este mensaje:*' : '*Total:*';
           const netTotalNote = totalNetKg !== totalKg ? ` → *${totalNetKg.toLocaleString('es-AR')} kg netos* (merma ${(totalKg - totalNetKg).toLocaleString('es-AR')} kg)` : '';
@@ -3117,7 +3123,7 @@ export class AgronomyHandler {
           if (extras.lines.length > 0) loadsMsg += `\n\n${extras.lines.join('\n')}`;
           loadsMsg += weightlessNote;
 
-          loadsMsg += `\n\n🏁 _La campaña sigue abierta por si te falta cargar algo (cargas, gastos). Cuando esté todo, decime *"cerrar campaña"*: se archiva el ciclo con sus números (rinde, gastos, margen) y el lote queda listo para la próxima siembra._`;
+          loadsMsg += `\n\n🏁 _La campaña sigue abierta. Cuando termines de cargar, decime *cerrar campaña*._`;
 
           // Costo de cosechar (contratista + flete) — con botón, nunca texto suelto.
           const costOffer = await this.harvestCostOffer(userId, harvestPcId, plotLabel, cmd);
@@ -3161,7 +3167,7 @@ export class AgronomyHandler {
           const extras = await this.buildHarvestExtras(userId, harvestPcId, plotResult, crop, null);
           if (extras.lines.length > 0) harvestMsg += `\n\n${extras.lines.join('\n')}`;
         }
-        harvestMsg += `\n\n🏁 _La campaña sigue abierta por si te falta cargar algo (cargas, gastos). Cuando esté todo, decime *"cerrar campaña"*: se archiva el ciclo con sus números (rinde, gastos, margen) y el lote queda listo para la próxima siembra._`;
+        harvestMsg += `\n\n🏁 _La campaña sigue abierta. Cuando termines de cargar, decime *cerrar campaña*._`;
         const messages = [harvestMsg];
 
         // If quantity provided, suggest loading grain to stock/silo. Same

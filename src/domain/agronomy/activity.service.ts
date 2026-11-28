@@ -44,7 +44,8 @@ export function formatActivityConfirmation(
   const { emoji, label } = getActivityLabel(type);
   const lines: string[] = [];
 
-  lines.push(`${emoji} *${label}* registrada`);
+  // "Riego registrado", "Fumigación registrada": según el género de la labor.
+  lines.push(`${emoji} *${label}* registrad${/(?:o|aje|ete|eo)$/i.test(label.trim()) ? 'o' : 'a'}`);
 
   if (plotLabel) {
     lines.push(`\ud83d\udccd ${plotLabel}`);

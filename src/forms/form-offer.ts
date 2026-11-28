@@ -1,4 +1,5 @@
 import { formSessionService } from '../services/form-session.service.js';
+import { headsLabel } from '../domain/livestock/livestock.types.js';
 import { getSetting } from '../services/settings.service.js';
 import { FORM_DEFINITIONS } from './form-definitions.js';
 import { resolveWhatsAppFormProvider } from './form-provider.js';
@@ -28,7 +29,7 @@ function offerSummary(def: Definition, prefill: Record<string, unknown>, message
     ? `${prefill.currency === 'USD' ? 'US$' : '$'}${prefill.amount.toLocaleString('es-AR')}` : null;
   const rows = Array.isArray(prefill._rows) ? prefill._rows as Array<Record<string, unknown>> : null;
   if (rows) {
-    const list = rows.map(r => `${r.count} ${String(r.category)}`).join(' + ');
+    const list = rows.map(r => headsLabel(r.count as number, r.category as string)).join(' + ');
     return [def.title, list, 'Completá el formulario 👇'].join('\n').slice(0, FLOW_BODY_MAX);
   }
   const carry = (prefill._carry ?? {}) as Record<string, unknown>;

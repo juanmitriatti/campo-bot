@@ -32,7 +32,10 @@ export function isNewHerdStatement(text: string): boolean {
 export function extractCountCorrection(text: string): number | null {
   if (!text) return null;
   if (PRICE_MARKER_RE.test(text)) return null; // it's a price, not a count
-  const m = COUNT_CORRECTION_RE.exec(text);
+  // Sin tildes: las marcas ("perdon", "me equivoque") están escritas sin tilde y
+  // "perdón, eran 20" no matcheaba — con la pregunta de precio abierta se
+  // guardaba como precio de $20 por cabeza (prod, nov 2026).
+  const m = COUNT_CORRECTION_RE.exec(text.normalize('NFD').replace(/[\u0300-\u036f]/g, ''));
   if (!m) return null;
   const n = parseInt(m[1], 10);
   return Number.isFinite(n) && n > 0 && n < 100000 ? n : null;

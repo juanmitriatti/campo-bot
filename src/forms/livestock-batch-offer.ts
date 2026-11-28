@@ -3,6 +3,7 @@
 // arranque (invariante 7 intacta: no se frena a mitad, no empezó). La cola de
 // preguntas queda abierta igual, así contestar por chat sigue funcionando.
 import crypto from 'crypto';
+import { headsLabel } from '../domain/livestock/livestock.types.js';
 import { getSetting } from '../services/settings.service.js';
 import { findAllUserPlots } from '../services/expenses.js';
 import { livestockLocationIntent } from '../utils/livestock-location-intent.js';
@@ -57,7 +58,7 @@ export async function offerLivestockBatch(
   if (plots.length < 2) return null;
 
   const batch = crypto.randomBytes(6).toString('hex');
-  const ask = (c: Cmd) => `👇 Alta de hacienda(${c.count} ${c.category}): ${plotChoicePrompt(plots)}`;
+  const ask = (c: Cmd) => `👇 Alta de hacienda (${headsLabel(c.count as number, c.category as string)}): ${plotChoicePrompt(plots)}`;
   const queued = (c: Cmd) => ({
     command: 'add_livestock', data: { ...c, __batch: batch, __fromQueue: true }, missing: ['plot'], askPrompt: ask(c),
   });

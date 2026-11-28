@@ -3,6 +3,7 @@
 // descarta: se PREGUNTA. Para sospechar tienen que coincidir la fecha y el
 // lugar, además del dato; el mismo gasoil en otro lote es otro gasto.
 import { pool } from '../config/db.js';
+import { headsLabel } from '../domain/livestock/livestock.types.js';
 import { dismissButton } from '../middleware/dismiss-button.js';
 import { formatDateAR } from '../utils/date.js';
 import type { FormAction } from './form-definitions.js';
@@ -73,7 +74,7 @@ export async function findRecordSinceForm(
       [token, userId, data.event_date, either('count'), data.category, plotId],
     );
     const r = rows[0] as { count: number; category: string } | undefined;
-    return r ? `un ingreso de ${r.count} ${r.category.toLowerCase()}` : null;
+    return r ? `un ingreso de ${headsLabel(r.count, r.category)}` : null;
   }
 
   // Siembra: el handler ya reconoce la repetida (no la duplica, actualiza lo que
@@ -113,7 +114,7 @@ export function duplicateRowsQuestion(rows: Array<{ what: string; cmd: Record<st
       type: 'buttons',
       body: `⚠️ Desde que abriste este formulario ya cargaste ${rows.map(r => r.what).join(' y ')}. ¿Son otros? Esos todavía no los guardé.${rest}`,
       buttons: [
-        ...shown.map(r => ({ id: saveAnywayId(r.cmd), title: `Guardar ${r.cmd.count} ${String(r.cmd.category)}`.slice(0, 20) })),
+        ...shown.map(r => ({ id: saveAnywayId(r.cmd), title: `Guardar ${headsLabel(r.cmd.count as number, r.cmd.category as string)}`.slice(0, 20) })),
         dismissButton('No, ya está', '👍 Listo, no lo cargué de nuevo. Lo que ya tenías registrado quedó como estaba.'),
       ],
     },
