@@ -1151,7 +1151,7 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
       const junk = await h.send('En otro lote');
       // Nivel 1: el re-ask tiene que DECIR que no encontró ese lote y mostrar los reales
       expect(h.allText(junk)).toMatch(/no encontré/i);
-      expect(h.allText(junk)).toMatch(/1A/);
+      expect([h.allText(junk), ...h.allButtons(junk).map(b => b.title)].join('\n')).toMatch(/1A/);
 
       // La respuesta válida "3b" tiene que completar la cosecha (sin loop)
       const done = await h.send('3b');
@@ -1643,7 +1643,10 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
     it('un lote que no existe en el campo nombrado re-pregunta solo con los lotes de ese campo', async () => {
       h.fakeAgent.enqueueTool('log_spraying', { product: 'glifosato', field: 'campo 2' });
       await h.send('fumigué con glifosato en el campo 2');
-      const r = h.allText(await h.send('Pepito'));
+      const again = await h.send('Pepito');
+      // Los lotes van en el selector (títulos de fila y de sección).
+      const r = [h.allText(again), ...h.allButtons(again).map(b => b.title),
+        ...(again as Array<{ interactive?: { sections?: Array<{ title: string }> } }>).flatMap(i => (i.interactive?.sections ?? []).map(s => s.title))].join('\n');
       expect(r).toMatch(/El Uno/);
       expect(r).not.toMatch(/La Esperanza|Los Teros/);
     });
@@ -6167,6 +6170,24 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
       await h.send('cancelar');
       await h.q(`DELETE FROM domain_events WHERE user_id = $1`, [h.userId]);
       await h.q(`DELETE FROM plot_crops WHERE plot_id IN (SELECT id FROM plots WHERE field_id = $1)`, [fieldId]);
+    });
+
+    it('falta el lote de una fumigación: se ofrecen los lotes para tocar, sin perder el producto', async () => {
+      await h.q(`DELETE FROM domain_events WHERE user_id = $1`, [h.userId]);
+      h.fakeAgent.enqueueTool('log_spraying', { product: 'glifosato' });
+      const ask = await h.send('fumigué con glifosato');
+      expect(interactiveOf(ask)).toHaveLength(1);
+      expect(h.allText(ask)).toMatch(/¿En qué lote\?[\s\S]*glifosato/);
+      const norte = h.allButtons(ask).find(b => b.title === 'Norte')!;
+      expect(norte.id).toMatch(/^flow_plot_/);
+      await h.tap(norte.id);
+      const ev = await h.q(
+        `SELECT d.product, p.name AS plot FROM domain_events d JOIN plots p ON p.id = d.plot_id
+          WHERE d.user_id = $1 AND d.event_type = 'spraying'`, [h.userId]);
+      expect(ev).toHaveLength(1);
+      expect(String(ev[0].plot)).toBe('Norte');
+      expect(String(ev[0].product)).toMatch(/glifosato/i);
+      await h.q(`DELETE FROM domain_events WHERE user_id = $1`, [h.userId]);
     });
 
     it('la misma lluvia mandada dos veces no se suma sola: se pregunta', async () => {

@@ -52,7 +52,7 @@ function num(v: unknown): number | null {
 import { validateStageCode } from './stage-code-validator.js';
 import type { UserId, User, ParsedCommand, UserSettings, HandlerResponse, ActivityType, PlotDiscoveryResult, DomainEventRow } from '../../types/index.js';
 import { PENDING_ALL_PLOTS_ID, type PendingActivity } from '../../middleware/pending-activities.js';
-import { formatPlotListGrouped } from '../../middleware/flows/field-step-helpers.js';
+import { formatPlotListGrouped, buildPlotInteractiveGrouped } from '../../middleware/flows/field-step-helpers.js';
 
 // --- AI intent → DB event_type normalization ---
 const ACTIVITY_FILTER_MAP: Record<string, string> = {
@@ -532,9 +532,18 @@ export class AgronomyHandler {
     activityLabel: string,
     plots: Array<{ id: number; name: string; field_name: string }>,
     cmd: ParsedCommand,
+    // Con formulario ofrecido (siembra / cosecha) el selector no va: el lote se elige ahí.
+    usePicker = true,
   ): HandlerResponse {
+    // Hasta 10 lotes: se eligen tocando (el tap contesta el slot del pending,
+    // igual que escribir el nombre). Con más, la lista escrita.
+    const what = [activityLabel, cmd.product ? `con ${String(cmd.product)}` : null].filter(Boolean).join(' ');
+    const picker = usePicker && plots.length <= 10
+      ? buildPlotInteractiveGrouped(plots.map(p => ({ plotName: p.name, fieldName: p.field_name })), `¿En qué lote?${what ? ` _(${what})_` : ''}\n\nElegilo de la lista o escribime el nombre.`)
+      : null;
     return {
-      messages: [`¿En qué lote?\n\n${formatPlotListGrouped(plots)}`],
+      messages: picker ? [] : [`¿En qué lote?\n\n${formatPlotListGrouped(plots)}`],
+      ...(picker ? { interactive: picker } : {}),
       suggestionKey: 'default_menu',
       sideEffects: {
         // missing:['plot'] routes the answer through the unified slot processor,
@@ -2361,7 +2370,7 @@ export class AgronomyHandler {
         }
 
         if (plotResult.type === 'ask_user') {
-          return this.withFormOffer(this.buildAskPlotResponse('siembra', plotResult.plots, cmd), sowFormOffer(cmd));
+          return this.withFormOffer(this.buildAskPlotResponse('siembra', plotResult.plots, cmd, !sowFormOffer(cmd)), sowFormOffer(cmd));
         }
 
         // "soja de segunda" puede llegar dentro del nombre del cultivo: el orden
@@ -2696,7 +2705,7 @@ export class AgronomyHandler {
         }
 
         if (plotResult.type === 'ask_user') {
-          return this.withFormOffer(this.buildAskPlotResponse('cosecha', plotResult.plots, cmd), harvestFormOffer(cmd));
+          return this.withFormOffer(this.buildAskPlotResponse('cosecha', plotResult.plots, cmd, !harvestFormOffer(cmd)), harvestFormOffer(cmd));
         }
 
         // Crop inference: when the agent didn't pass a crop, try active first,
@@ -4030,6 +4039,20 @@ export class AgronomyHandler {
         //   fertilization: product + plot + quantity
         //   tillage:       plot + (implement OR product)   (qty optional)
         //   irrigation:    plot + quantity                 (mm)
+        // Formulario de labor con lo que ya dijo (prefill en nombres del dominio).
+        const laborFormOffer = {
+          action: 'log_activity' as const,
+          prefill: {
+            activityType: eventType,
+            product: (cmd.product as string) ?? (cmd.implement as string) ?? null,
+            quantity: (cmd.quantity as number) ?? null,
+            unit: (cmd.unit as string) ?? null,
+            plotName: (cmd.plotName as string) ?? null,
+            fieldName: (cmd.fieldName as string) ?? null,
+            eventDate: (cmd.eventDate as string) ?? null,
+            notes: (cmd.notes as string) ?? null,
+          },
+        };
         {
           const missing: string[] = [];
           const needsProduct = cmd.command === 'log_spraying' || cmd.command === 'log_fertilization';
@@ -4042,6 +4065,15 @@ export class AgronomyHandler {
           if (needsImplementOrProduct && !cmd.implement && !cmd.product) missing.push('product');
           if (!cmd.plotName && !cmd.fieldName) missing.push('plot');
           if (needsQuantity && !cmd.quantity) missing.push('quantity');
+          // Solo falta el LOTE: se pregunta con los lotes para tocar (nunca se toma
+          // el del contexto: el usuario no lo nombró). Con un solo lote sigue de largo.
+          if (missing.length === 1 && missing[0] === 'plot') {
+            const allPlots = await this.repo.findAllUserPlots(userId);
+            if (allPlots.length >= 2) {
+              return this.withFormOffer(this.buildAskPlotResponse(actLabel.toLowerCase(), allPlots, cmd), laborFormOffer);
+            }
+            if (allPlots.length === 1) missing.length = 0;
+          }
           if (missing.length > 0) {
             const askParts: string[] = [];
             if (missing.includes('product')) {
@@ -4061,20 +4093,7 @@ export class AgronomyHandler {
                   missing,
                   askPrompt,
                 },
-                // Formulario de labor con lo que ya dijo (prefill en nombres del dominio).
-                offerForm: {
-                  action: 'log_activity',
-                  prefill: {
-                    activityType: eventType,
-                    product: (cmd.product as string) ?? (cmd.implement as string) ?? null,
-                    quantity: (cmd.quantity as number) ?? null,
-                    unit: (cmd.unit as string) ?? null,
-                    plotName: (cmd.plotName as string) ?? null,
-                    fieldName: (cmd.fieldName as string) ?? null,
-                    eventDate: (cmd.eventDate as string) ?? null,
-                    notes: (cmd.notes as string) ?? null,
-                  },
-                },
+                offerForm: laborFormOffer,
               },
             };
           }
@@ -4120,7 +4139,7 @@ export class AgronomyHandler {
         }
 
         if (plotResult.type === 'ask_user') {
-          return this.buildAskPlotResponse(actLabel.toLowerCase(), plotResult.plots, cmd);
+          return this.withFormOffer(this.buildAskPlotResponse(actLabel.toLowerCase(), plotResult.plots, cmd), laborFormOffer);
         }
 
         const activeCrop = await this.cropService.getActive(plotResult.plotId);
