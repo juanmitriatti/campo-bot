@@ -500,90 +500,9 @@ export class CompoundExecutor {
     bulkSaved: Array<{ kind: string; id: number; fieldId: number }>,
     userId: UserId,
   ): Promise<{ message: string; interactive: InteractiveMessage } | null> {
-    const fieldIds = Array.from(new Set(bulkSaved.map(s => s.fieldId).filter(id => id > 0)));
-    if (fieldIds.length !== 1) return null;
-    const fieldId = fieldIds[0];
-
-    const plotsRes = await pool.query(
-      `SELECT id, name FROM plots WHERE field_id = $1 AND deleted_at IS NULL ORDER BY name`,
-      [fieldId],
-    );
-    const plots = plotsRes.rows as Array<{ id: number; name: string }>;
-    if (plots.length < 2) return null;
-
-    const fieldRes = await pool.query(
-      `SELECT name FROM fields WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL`,
-      [fieldId, userId],
-    );
-    const fieldName = (fieldRes.rows[0]?.name as string) ?? 'el campo';
-
-    // Group ids by kind so the button callback can route each kind to the
-    // right UPDATE statement.
-    const byKind: Record<string, number[]> = {};
-    for (const r of bulkSaved) {
-      (byKind[r.kind] ?? (byKind[r.kind] = [])).push(r.id);
-    }
-
-    // Human-readable summary line per kind.
-    const KIND_LABEL: Record<string, [string, string]> = {
-      expense: ['gasto', 'gastos'],
-      income: ['ingreso', 'ingresos'],
-      activity: ['actividad', 'actividades'],
-      observation: ['observación', 'observaciones'],
-      scouting: ['monitoreo', 'monitoreos'],
-      livestock: ['movimiento de hacienda', 'movimientos de hacienda'],
-      rainfall: ['lluvia', 'lluvias'],
-      stock_movement: ['movimiento de stock', 'movimientos de stock'],
-    };
-    const summaryParts: string[] = [];
-    for (const [kind, ids] of Object.entries(byKind)) {
-      const labels = KIND_LABEL[kind] ?? [kind, `${kind}s`];
-      summaryParts.push(`${ids.length} ${ids.length === 1 ? labels[0] : labels[1]}`);
-    }
-    const summary = summaryParts.join(' + ');
-    const body = `💡 Guardé ${summary} a nivel campo *${fieldName}*. ¿A qué lote los asigno?`;
-
-    // Encode payload as base64 and register it in the callbackPayloadStore,
-    // embedding only the short token (~8 chars) in callback_data. Telegram caps
-    // callback_data at 64 BYTES — inline base64 with 3+ records overflowed it
-    // and the sendMessage fallaba con HTTP 400 silencioso (el usuario no veía
-    // los botones). Format: bap2_<token>_<plotId>. The router resolves token →
-    // payload via callbackPayloadStore (with inline-base64 fallback for any
-    // in-flight buttons rendered before this change).
-    const recordsPayload = callbackPayloadStore.set(
-      Buffer.from(JSON.stringify(byKind)).toString('base64url'),
-    );
-
-    const optionRows = [
-      ...plots.map(p => ({
-        id: `bap2_${recordsPayload}_${p.id}`,
-        title: p.name.slice(0, 24),
-      })),
-      {
-        id: `bap2_${recordsPayload}_0`, // 0 = leave at field-level
-        title: 'Dejar a nivel campo',
-      },
-    ];
-
-    if (optionRows.length <= 3) {
-      return {
-        message: body,
-        interactive: {
-          type: 'buttons',
-          body: '¿A qué lote?',
-          buttons: optionRows.map(r => ({ id: r.id, title: r.title.slice(0, 20) })),
-        },
-      };
-    }
-    return {
-      message: body,
-      interactive: {
-        type: 'list',
-        body: '¿A qué lote?',
-        buttonText: 'Elegir',
-        sections: [{ title: 'Lotes', rows: optionRows.map(r => ({ id: r.id, title: r.title })) }],
-      },
-    };
+    // Un registro por vez, cada uno con su nombre (record-plot-prompt.ts).
+    const { buildRecordPlotPrompt } = await import('./record-plot-prompt.js');
+    return buildRecordPlotPrompt(bulkSaved, userId);
   }
 }
 

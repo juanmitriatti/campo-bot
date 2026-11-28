@@ -6149,5 +6149,35 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
       expect(await heads()).toEqual([20]);
       expect(await spent()).toEqual([18000]);
     });
+    it('paso 3: varias acciones sin lote → se pregunta el lote de CADA registro, uno por uno', async () => {
+      await h.q(`DELETE FROM expenses WHERE user_id = $1`, [h.userId]);
+      await h.q(`UPDATE user_settings SET confirm_before_save = false WHERE user_id = $1`, [h.userId]);
+      type Row = { id: string; title: string };
+      const options = (items: unknown[]): Row[] => (items as Array<{ interactive?: { buttons?: Row[]; sections?: Array<{ rows: Row[] }> } }>)
+        .flatMap(i => [...(i.interactive?.buttons ?? []), ...(i.interactive?.sections ?? []).flatMap(s => s.rows)]);
+      try {
+        h.fakeAgent.enqueue([
+          { toolName: 'log_expense', toolInput: { amount: 80000, category: 'Combustible', description: 'gasoil', field: 'La Esperanza' } },
+          { toolName: 'log_expense', toolInput: { amount: 300000, category: 'Arrendamiento', description: 'arrendamiento', field: 'La Esperanza' } },
+        ]);
+        const first = await h.send('pagué 80 mil de gasoil y 300 mil de arrendamiento');
+        expect(h.allText(first)).toMatch(/\(1 de 2\)[\s\S]*¿A qué lote lo imputo\?/);
+        const norte = options(first).find(o => o.title === 'Norte')!;
+        const second = await h.tap(norte.id);
+        expect(h.allText(second)).toMatch(/\(2 de 2\)/);
+        // Un segundo toque en el teclado ya usado no reasigna ni vuelve a preguntar.
+        expect(h.allText(await h.tap(norte.id))).toMatch(/ya fue procesada/);
+        await h.tap(options(second).find(o => o.title === 'Todo el campo')!.id);
+        const rows = await h.q(
+          `SELECT e.amount::float AS amount, p.name AS plot FROM expenses e LEFT JOIN plots p ON p.id = e.plot_id
+            WHERE e.user_id = $1 AND e.deleted_at IS NULL ORDER BY e.amount`, [h.userId]);
+        expect(rows).toHaveLength(2);
+        expect(rows.filter(r => r.plot === 'Norte')).toHaveLength(1);
+        expect(rows.filter(r => r.plot === null)).toHaveLength(1);
+      } finally {
+        await h.q(`UPDATE user_settings SET confirm_before_save = true WHERE user_id = $1`, [h.userId]);
+        await h.q(`DELETE FROM expenses WHERE user_id = $1`, [h.userId]);
+      }
+    });
   });
 });

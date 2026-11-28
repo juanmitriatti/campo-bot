@@ -3769,7 +3769,14 @@ export class FinancialHandler {
       case 'assign_bulk_plot': {
         const plotId = cmd.plotId as number | null; // null = leave at field level
         const records = (cmd.records as Record<string, number[]> | undefined) ?? {};
-        return this.handleAssignBulkPlot(userId, plotId, records);
+        const assigned = await this.handleAssignBulkPlot(userId, plotId, records);
+        // Quedan registros por ubicar: se pregunta el siguiente en la misma respuesta.
+        const pending = (cmd.nextRecords as Array<{ kind: string; id: number; fieldId: number }> | undefined) ?? [];
+        if (pending.length === 0) return assigned;
+        const { buildRecordPlotPrompt } = await import('../record-plot-prompt.js');
+        const next = await buildRecordPlotPrompt(pending, userId, (cmd.progress as { done: number; total: number } | null) ?? undefined);
+        if (!next) return assigned;
+        return { ...assigned, messages: [...(assigned.messages ?? []), next.message], interactive: next.interactive };
       }
 
       // Re-execution endpoints for the unified pending action system. When the

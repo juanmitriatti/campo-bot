@@ -392,7 +392,7 @@ function makePartialIncome(extra: Record<string, unknown> = {}): ParseResult {
 }
 
 describe('CompoundExecutor — bulk plot prompt (Fix A)', () => {
-  it('appends a plot-assignment prompt when 2 incomes saved without plot + field has 3 plots', async () => {
+  it('2 ingresos guardados sin lote + campo con 3 lotes: pregunta el lote del PRIMERO y lleva el otro en cola', async () => {
     // Mock pool: first call returns 3 plots, second returns field name.
     (pool.query as any) = vi.fn()
       .mockResolvedValueOnce({ rows: [{ id: 11, name: 'A1' }, { id: 12, name: 'A2' }, { id: 13, name: 'A3' }] })
@@ -410,13 +410,13 @@ describe('CompoundExecutor — bulk plot prompt (Fix A)', () => {
     const result = await executor.execute(results, 1 as UserId, mockUser, mockSettings);
 
     expect(result).not.toBeNull();
-    const prompt = result!.messages.find(m => m.includes('a nivel campo') && m.includes('la esperanza'));
+    const prompt = result!.messages.find(m => m.includes('¿A qué lote lo imputo?') && m.includes('la esperanza') && m.includes('(1 de 2)'));
     expect(prompt).toBeDefined();
     expect(result!.lastInteractive).toBeDefined();
     // Field has 3 plots → 3 plot buttons + "Dejar a nivel campo" = 4 options → uses list interactive
     expect(result!.lastInteractive!.type).toBe('list');
     const rows = (result!.lastInteractive as any).sections[0].rows;
-    expect(rows.map((r: any) => r.title)).toEqual(['A1', 'A2', 'A3', 'Dejar a nivel campo']);
+    expect(rows.map((r: any) => r.title)).toEqual(['A1', 'A2', 'A3', 'Todo el campo']);
     // V2 button payload: bap2_<token>_<plotId> — el payload base64 vive en el
     // callbackPayloadStore (límite de 64 bytes de callback_data en Telegram).
     expect(rows[0].id).toMatch(/^bap2_[A-Za-z0-9_-]+_11$/);
@@ -427,7 +427,8 @@ describe('CompoundExecutor — bulk plot prompt (Fix A)', () => {
     const { callbackPayloadStore } = await import('../../middleware/callback-payload-store.js');
     const payloadStr = callbackPayloadStore.get(tokenStr) ?? tokenStr;
     const decoded = JSON.parse(Buffer.from(payloadStr, 'base64url').toString('utf-8'));
-    expect(decoded.income).toEqual([100, 101]);
+    expect(decoded.income).toEqual([100]);
+    expect(decoded.__next).toEqual([{ kind: 'income', id: 101, fieldId: 34 }]);
     // El token debe entrar holgado en los 64 bytes de Telegram.
     expect(Buffer.byteLength(rows[0].id, 'utf-8')).toBeLessThanOrEqual(64);
   });

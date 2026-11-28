@@ -269,14 +269,18 @@ export class InteractiveRouter {
       try {
         const resolvedBap2 = callbackPayloadStore.get(bap2Match[1]);
         if (resolvedBap2 === null) throw new Error('token vencido o ajeno');
-        const byKind = JSON.parse(Buffer.from(resolvedBap2, 'base64url').toString('utf-8')) as Record<string, number[]>;
+        const decoded = JSON.parse(Buffer.from(resolvedBap2, 'base64url').toString('utf-8')) as Record<string, unknown>;
+        // La cola de registros que todavía hay que preguntar viaja en el botón.
+        const { __next: nextRecords, __progress: progress, ...byKind } = decoded;
         const plotId = parseInt(bap2Match[2], 10);
         return {
           type: 'command',
           data: {
             command: 'assign_bulk_plot',
             plotId: plotId === 0 ? null : plotId,
-            records: byKind,
+            records: byKind as Record<string, number[]>,
+            nextRecords: Array.isArray(nextRecords) ? nextRecords : [],
+            progress: progress ?? null,
           },
         };
       } catch {
