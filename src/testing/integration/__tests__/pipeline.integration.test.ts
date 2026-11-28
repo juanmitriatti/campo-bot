@@ -6213,6 +6213,35 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
       await h.q(`DELETE FROM plot_crops WHERE plot_id IN (SELECT id FROM plots WHERE field_id = $1)`, [fieldId]);
     });
 
+    it('«compré 10 bolsas de urea» + «80 lucas»: pregunta si es el total o por bolsa', async () => {
+      await h.q(`DELETE FROM expenses WHERE user_id = $1`, [h.userId]);
+      await h.q(`UPDATE user_settings SET confirm_before_save = false WHERE user_id = $1`, [h.userId]);
+      const amounts = async () => (await h.q(`SELECT amount::float AS a FROM expenses WHERE user_id = $1 AND deleted_at IS NULL ORDER BY id`, [h.userId])).map(r => r.a);
+      try {
+        h.fakeAgent.enqueueTool('log_expense', { quantity: 10, unit: 'bolsas', category: 'Fertilizantes', description: 'urea', plot: 'Norte' });
+        await h.send('compré 10 bolsas de urea para el Norte');
+        const ask = await h.send('80 lucas');
+        expect(h.allText(ask)).toMatch(/son el total o por bolsa\?[\s\S]*\$800\.000/);
+        expect(await amounts()).toEqual([]);
+        const perUnit = h.allButtons(ask).find(b => b.title === 'Es por bolsa')!;
+        const total = h.allButtons(ask).find(b => b.title === 'Es el total')!;
+        await h.tap(perUnit.id);
+        expect(await amounts()).toEqual([800000]);
+        // El otro botón ya no contesta nada: la pregunta se cerró.
+        expect(h.allText(await h.tap(total.id))).toMatch(/ya estaba contestada/);
+        expect(await amounts()).toEqual([800000]);
+
+        // Dicho de entrada, no se pregunta.
+        h.fakeAgent.enqueueTool('log_expense', { quantity: 10, unit: 'bolsas', category: 'Fertilizantes', description: 'urea', plot: 'Norte' });
+        await h.send('compré 10 bolsas de urea para el Norte');
+        await h.send('80 lucas en total');
+        expect(await amounts()).toEqual([800000, 80000]);
+      } finally {
+        await h.q(`UPDATE user_settings SET confirm_before_save = true WHERE user_id = $1`, [h.userId]);
+        await h.q(`DELETE FROM expenses WHERE user_id = $1`, [h.userId]);
+      }
+    });
+
     it('la misma lluvia mandada dos veces no se suma sola: se pregunta', async () => {
       await h.q(`DELETE FROM rainfall WHERE user_id = $1`, [h.userId]);
       const total = async () => (await h.q(`SELECT COALESCE(SUM(millimeters), 0)::float AS mm FROM rainfall WHERE user_id = $1`, [h.userId]))[0].mm;

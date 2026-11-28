@@ -34,7 +34,7 @@ import { FinancialHandler } from '../domain/financial/financial.handler.js';
 import { FinancialService } from '../domain/financial/financial.service.js';
 import { LivestockRepository } from '../domain/livestock/livestock.repository.js';
 import { extractCountCorrection, isNewHerdStatement } from '../utils/self-correction.js';
-import { headNumbersInText } from '../utils/lexicon.js';
+import { headNumbersInText, statesTotalAmount } from '../utils/lexicon.js';
 import { FinancialRepository } from '../domain/financial/financial.repository.js';
 import { AgronomyHandler } from '../domain/agronomy/agronomy.handler.js';
 import { AgronomyRepository } from '../domain/agronomy/agronomy.repository.js';
@@ -53,6 +53,7 @@ import { compactEntityName, findEquivalentName } from '../utils/entity-matcher.j
 import { isOneShotCallback, consumeOnce, repeatedTapMessage, restoreConsumed } from '../middleware/one-shot-callbacks.js';
 import { flushCallbackState } from '../middleware/callback-persistence.js';
 import { DISMISS_PREFIX, readDismiss } from '../middleware/dismiss-button.js';
+import { ANSWER_PREFIX, answerButton, readAnswer } from '../middleware/answer-button.js';
 import { runWithCallbackOwner, callbackPayloadStore } from '../middleware/callback-payload-store.js';
 import { isFieldOwner } from '../domain/shared/field-access.js';
 import { tipEngine } from './tip-engine.js';
@@ -629,6 +630,35 @@ async function undoDelete(token: string, userId: UserId): Promise<BotResponseIte
     text: `↩️ Listo, recuperé el ${noun}: *${row.category ?? 'Sin categoría'}* · ${money}.`
       + (lost ? `\n⚠️ Mientras tanto se borró ${lost}: el ${noun} quedó sin esa ubicación. Decime dónde va si querés asignarlo.` : ''),
   }];
+}
+
+/**
+ * "¿A cuánto?" de un gasto o ingreso con cantidad (10 bolsas, 30 tn) contestado
+ * con un monto que no dice si es el total o por unidad → pregunta con las dos
+ * lecturas. null cuando no hay duda (una sola unidad, "en total", "c/u"…).
+ */
+function ambiguousAmountQuestion(
+  text: string,
+  pendingAct: import('../middleware/pending-activities.js').PendingActivity,
+  extracted: Record<string, unknown>,
+): BotResponseItem | null {
+  if (pendingAct.command !== 'log_expense' && pendingAct.command !== 'log_income') return null;
+  if (!(pendingAct.missing ?? []).includes('amount')) return null;
+  const data = (pendingAct.data ?? {}) as Record<string, unknown>;
+  const qty = Number(data.quantity);
+  const amount = Number(extracted.amount);
+  if (!(qty > 1) || !(amount > 0) || extracted.unit_price != null || statesTotalAmount(text)) return null;
+  const currency = (extracted.currency ?? data.currency) === 'USD' ? 'USD' : 'ARS';
+  const money = (n: number) => `${currency === 'USD' ? 'US$ ' : '$'}${n.toLocaleString('es-AR')}`;
+  const unit = String(data.unit ?? 'unidad').replace(/s$/, '') || 'unidad';
+  const suffix = currency === 'USD' ? ' dólares' : '';
+  return interactiveButtons(
+    `💰 ¿Los *${money(amount)}* son el total o por ${unit}?\n\n• Total: ${qty.toLocaleString('es-AR')} ${String(data.unit ?? 'unidades')} = *${money(amount)}*\n• Por ${unit}: ${qty.toLocaleString('es-AR')} × ${money(amount)} = *${money(Math.round(qty * amount * 100) / 100)}*`,
+    [
+      answerButton('Es el total', `${amount}${suffix} en total`, pendingAct.command),
+      answerButton(`Es por ${unit}`, `${amount}${suffix} c/u`, pendingAct.command),
+    ],
+  );
 }
 
 export function isCancelIntent(text: string): boolean {
@@ -1928,6 +1958,15 @@ ${ask}` }];
         console.error('[pending-processor] threw:', (err as Error).message);
         pendingActStore.clear(phone);
         return [{ type: 'text', text: 'No pude interpretar tu respuesta. Probá de nuevo o escribí *cancelar*.' }];
+      }
+      // Monto pelado sobre VARIAS unidades ("80 lucas" para 10 bolsas): puede ser
+      // el total o el precio de cada una. No se adivina: los dos botones contestan
+      // la misma pregunta con la lectura escrita sin ambigüedad.
+      const scopeAsk = ambiguousAmountQuestion(text, pendingAct, result.extracted as Record<string, unknown>);
+      if (scopeAsk) {
+        console.log(`[INTERCEPT] pending ${pendingAct.command}: monto sin decir si es total o por unidad — se pregunta`);
+        pendingActStore.set(phone, { ...pendingAct, timestamp: Date.now() });
+        return [scopeAsk];
       }
       // "¿En qué lote?" contestado con un CAMPO o con algo que no existe: se
       // resuelve antes de re-rutear, sin soltar la pregunta ni la cola.
@@ -3421,6 +3460,17 @@ async function handleInteractiveReplyInner(
     }
     console.warn(`[INTERCEPT] confirm_destructive sin pending (phone=${phone})`);
     return [{ type: 'text', text: '⚠️ Esa confirmación ya venció — *no borré nada*. Si querés borrarlo, pedímelo de nuevo.' }];
+  }
+
+  // --- Botón que contesta la pregunta abierta con un texto sin ambigüedad ---
+  if (callbackId.startsWith(ANSWER_PREFIX)) {
+    const answer = readAnswer(callbackId);
+    const open = pendingActStore.get(phone);
+    if (!answer || open?.command !== answer.answers) {
+      console.log(`[INTERCEPT] botón de respuesta sin pregunta abierta: user=${userId} ${callbackId}`);
+      return [{ type: 'text', text: 'ℹ️ Esa pregunta ya estaba contestada. No hice ningún cambio.' }];
+    }
+    return processTextMessage(answer.text, ctx);
   }
 
   // --- "Ahora no" / "No" / "No, ya está": cada botón trae su respuesta ---

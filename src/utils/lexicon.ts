@@ -613,6 +613,15 @@ export function mentionsAdditionalArea(text: string): boolean {
 }
 
 /**
+ * El monto se dijo como TOTAL de la compra o la venta ("80 mil en total", "por
+ * todo", "por las 10"). Sin esta marca ni una de precio por unidad, un monto
+ * sobre varias unidades es ambiguo y se pregunta.
+ */
+export function statesTotalAmount(text: string): boolean {
+  return /\b(en\s+total|total|por\s+todo|todo\s+junto|por\s+(?:las?|los)\s+\d+|todas?|todos)\b/.test(normLex(text));
+}
+
+/**
  * El mensaje dice que la lluvia es OTRA, además de la ya cargada ("18 mm más",
  * "llovió de nuevo", "otros 10 mm"). Con esa marca no se pregunta si es la
  * misma lluvia repetida: el usuario ya lo dijo.
