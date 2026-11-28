@@ -180,15 +180,13 @@ async function redeemInboundVerification(phone: string, code: string): Promise<s
       const { rows } = await pool.query('SELECT 1 FROM fields WHERE user_id = $1 AND deleted_at IS NULL LIMIT 1', [r.user_id]);
       hasFields = rows.length > 0;
     } catch { /* ante la duda, el copy genérico */ }
-    // Sin campos, el primer paso es contar el campo (igual que la bienvenida de
-    // Telegram): sugerir un gasto rebotaría con "primero creá un campo".
-    if (!hasFields) {
-      const { interpolate } = await import('../utils/template.js');
-      const botName = (await getSetting('BOT_NAME')) || 'MIA';
-      const template = await getSetting('TG_LINKED_WELCOME_NO_FIELDS_MESSAGE');
-      if (template) return interpolate(template, { botName });
-    }
-    return '✅ *WhatsApp vinculado*\n\nYa podés usarme por acá. Probá con *menu* o escribí algo como "gasté 50 mil en gasoil".';
+    // Textos propios de WhatsApp (settings WA_LINKED_*), separados de los de
+    // Telegram. Sin campos, el primer paso es contar el campo: sugerir un gasto
+    // rebotaría con "primero creá un campo".
+    const { interpolate } = await import('../utils/template.js');
+    const botName = (await getSetting('BOT_NAME')) || 'MIA';
+    const template = await getSetting(hasFields ? 'WA_LINKED_WELCOME_MESSAGE' : 'WA_LINKED_WELCOME_NO_FIELDS_MESSAGE');
+    return interpolate(template || '✅ *WhatsApp vinculado*', { botName });
   } catch (err) {
     if (err instanceof VerificationError) return `❌ ${err.message}`;
     console.error('[whatsapp] redeemWhatsAppInbound failed:', err);

@@ -394,10 +394,11 @@ export class SystemHandler {
           sideEffects: { startFlow: { state: 'field_flow', data: {} } },
         };
 
-      case 'prompt_add_plot':
-        return {
-          messages: ['Para agregar un lote, escrib\u00ed:\n\n_\"Agregar lote [nombre]\"_\n\nEj: _\"Agregar lote A1\"_\n\nSi ten\u00e9s varios campos, especific\u00e1 cu\u00e1l:\n_\"Agregar lote A1 en campo Norte\"_'],
-        };
+      case 'prompt_add_plot': {
+        // Igual que "Crear Campo": la pregunta del nombre queda abierta.
+        const { askPlotName } = await import('../financial/financial.handler.js');
+        return askPlotName();
+      }
 
       case 'thanks':
         return { messages: ['De nada \ud83d\udc4d Cualquier cosa, ac\u00e1 estoy.'] };

@@ -92,14 +92,16 @@ export function isOneShotCallback(callbackId: string): boolean {
  */
 export function repeatedTapMessage(callbackId: string): string {
   if (ONE_SHOT_TOKEN_GROUPS.some(re => re.test(callbackId))) {
-    return '✅ Esa opción ya la tomé con el primer toque. No repetí la operación.\n' +
-           'Si querés hacer otra, escribime qué necesitás.';
+    return 'ℹ️ Esta operación ya fue procesada. No realicé ningún cambio adicional.';
   }
   if (callbackId.startsWith('animal_batch_move_')) {
     return '✅ Esa lectura de caravanas ya la apliqué con ese toque. No volví a mover los animales.';
   }
-  return '✅ Esa lluvia ya la registré con ese toque. No la sumé de nuevo.\n' +
-         'Si de verdad llovió otra vez, escribime los milímetros nuevos.';
+  if (callbackId.startsWith('rain_field_') || callbackId.startsWith('rainfld_') || callbackId.startsWith('rain_batch_')) {
+    return '✅ Esa lluvia ya la registré con ese toque. No la sumé de nuevo.\n' +
+           'Si de verdad llovió otra vez, escribime los milímetros nuevos.';
+  }
+  return 'ℹ️ Esta operación ya fue procesada. No realicé ningún cambio adicional.';
 }
 
 function cleanup(now: number): void {

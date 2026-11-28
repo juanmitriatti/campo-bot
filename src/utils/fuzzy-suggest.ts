@@ -124,7 +124,7 @@ export function buildFallbackMessage(rawText: string): string {
   const suggestions = suggestExamples(rawText, 2);
   if (suggestions.length > 0) {
     const list = suggestions.map(s => `   • ${s}`).join('\n');
-    return `🤔 No entendí del todo. ¿Quisiste decir algo como esto?\n${list}\n\nSi era otra cosa, reformulalo. Para ver todo lo que puedo hacer escribí *menú*.`;
+    return `🤔 No entendí del todo. ¿Quisiste decir algo como esto?\n${list}\n\nA continuación te doy otras alternativas.`;
   }
-  return `🤔 No entendí del todo. Probá con algo como:\n   • "gasté 50000 en gasoil"\n   • "llovió 25mm en La Esperanza"\n   • "agregar campo Don Pedro"\n\nO escribí *menú* para ver todo lo que puedo hacer.`;
+  return `🤔 No entendí del todo. Probá con algo como:\n   • "gasté 50000 en gasoil"\n   • "llovió 25mm en La Esperanza"\n   • "agregar campo Don Pedro"\n\nA continuación te doy otras alternativas.`;
 }

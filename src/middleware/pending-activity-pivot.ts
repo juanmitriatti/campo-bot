@@ -30,6 +30,39 @@ function describePendingActivity(pending: PendingActivity): string | null {
   }
 }
 
+/**
+ * Qué pasó con UNA pregunta que el usuario canceló: si el registro no llegó a
+ * guardarse o si ya estaba guardado y solo quedó incompleto (precio de una
+ * compra/venta de hacienda). "Cancelado" a secas no decía ninguna de las dos.
+ */
+export async function describeCancelled(userId: UserId, pending: Pick<PendingActivity, 'command' | 'data' | 'missing'>): Promise<string> {
+  const d = (pending.data ?? {}) as Record<string, unknown>;
+  if (pending.command === 'set_livestock_price' && d.movementId) {
+    const { rows } = await pool.query(
+      `SELECT m.count, m.movement_type, g.category::text AS category FROM livestock_movements m
+         LEFT JOIN livestock_groups g ON g.id = COALESCE(m.dest_group_id, m.source_group_id)
+        WHERE m.id = $1 AND m.user_id = $2`,
+      [d.movementId, userId],
+    );
+    const m = rows[0] as { count: number; movement_type: string; category: string | null } | undefined;
+    if (m) {
+      const verb = m.movement_type === 'entrada' ? 'La compra' : 'La venta';
+      return `${verb} de ${m.count} ${(m.category ?? 'animales').toLowerCase()} *ya está registrada*; queda sin precio.`;
+    }
+    return 'La operación de hacienda *ya está registrada*; queda sin precio.';
+  }
+  if (pending.command === 'log_expense' || pending.command === 'log_income') {
+    const noun = pending.command === 'log_income' ? 'El ingreso' : 'El gasto';
+    const of = typeof d.category === 'string' && d.category ? ` de ${d.category}` : '';
+    return `${noun}${of}: *no se guardó*.`;
+  }
+  if (pending.command === 'create_reminder') return 'El recordatorio: *no se guardó*.';
+  if (pending.command === 'add_plot') return 'El lote nuevo: *no se creó*.';
+  const label = describePendingActivity(pending as PendingActivity);
+  if (label) return `${label.charAt(0).toUpperCase()}${label.slice(1)}: *no se guardó*.`;
+  return 'Lo que te estaba preguntando: *no se guardó*.';
+}
+
 async function describeUnpriced(userId: UserId, pending: PendingActivity): Promise<string | null> {
   const d = (pending.data ?? {}) as Record<string, unknown>;
   if (pending.command === 'set_livestock_price' && d.movementId) {

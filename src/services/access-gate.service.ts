@@ -200,12 +200,11 @@ export async function trialExpiredCopy(): Promise<string> {
     supportLine = await getSupportLine();
   } catch { /* sin línea de soporte */ }
   return (
-    '⏳ *Tu prueba terminó*\n\n' +
-    'Para seguir usando las funciones completas (IA, audios, documentos, ' +
-    'agronomía), activá tu plan desde tu panel:\n' +
+    '⏳ *Tu prueba terminó* y por eso *no guardé* lo que me acabás de mandar.\n\n' +
+    'Para volver a cargar datos, activá tu plan desde tu panel:\n' +
     `${base}/dashboard\n\n` +
-    'Tus datos siguen guardados — nada se pierde. Podés seguir consultando ' +
-    'tus campos y lotes con *mis campos* / *mis lotes*.' +
+    'Tus datos anteriores siguen guardados — nada se pierde. Podés seguir ' +
+    'consultando tus campos y lotes con *mis campos* / *mis lotes*.' +
     (supportLine ? `\n\n${supportLine}` : '')
   );
 }

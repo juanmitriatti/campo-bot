@@ -287,6 +287,62 @@ export interface ChannelContext {
 // Helpers
 // ============================================================
 
+/** Tope del cuerpo de un mensaje con botones o lista en WhatsApp (1024). */
+const INTERACTIVE_BODY_MAX = 1000;
+
+/**
+ * Una pregunta = UN mensaje. El texto que precede a una botonera se funde en el
+ * cuerpo de la botonera: antes salían dos burbujas ("¿En qué lote lo
+ * registramos?" y enseguida "¿En qué lote?" con la lista; "¿Confirmamos?" y
+ * "¿Creamos el campo?"). Si el cuerpo de la botonera es solo una muletilla que
+ * repite la pregunta del texto, se descarta. Devuelve null si no entra en el
+ * tope del canal: ahí se manda en dos, como antes.
+ */
+export function foldIntoInteractiveBody(text: string, body: string): string | null {
+  const t = text.trim();
+  const b = (body ?? '').trim();
+  if (!t) return null;
+  if (b.includes(t)) return b;
+  if (!b || t.includes(b)) return t.length <= INTERACTIVE_BODY_MAX ? t : null;
+  const lastLine = t.split('\n').filter(l => l.trim()).pop() ?? '';
+  const textAsks = lastLine.includes('?');
+  const bodyIsFiller = b.length <= 40 && !b.includes('\n') && /[?:]\s*$/.test(b);
+  const merged = textAsks && bodyIsFiller ? t : `${t}\n\n${b}`;
+  return merged.length <= INTERACTIVE_BODY_MAX ? merged : null;
+}
+
+/**
+ * Lo mismo que hace collectResponse, pero sobre la respuesta YA armada: muchos
+ * caminos juntan a mano un texto y una botonera (flujos, correcciones, "no
+ * entendí"). Cada texto pegado a la botonera que lo sigue se funde con ella; se
+ * repite hacia atrás mientras la botonera ya contenga el texto anterior.
+ */
+export function mergePromptItems(items: BotResponseItem[]): BotResponseItem[] {
+  const out: BotResponseItem[] = [];
+  for (const item of items) {
+    const kind = item.interactive?.type;
+    if (item.type === 'interactive' && item.interactive && (kind === 'buttons' || kind === 'list')) {
+      let body = item.interactive.body ?? '';
+      let first = true;
+      for (;;) {
+        const prev = out[out.length - 1];
+        if (!prev || prev.type !== 'text' || !prev.text || (prev as { _attachment?: unknown })._attachment) break;
+        // Después del primer texto solo se absorben los que la botonera ya repite.
+        if (!first && !body.includes(prev.text.trim())) break;
+        const merged = foldIntoInteractiveBody(prev.text, body);
+        if (merged == null) break;
+        out.pop();
+        body = merged;
+        first = false;
+      }
+      out.push(body === item.interactive.body ? item : { ...item, interactive: { ...item.interactive, body } });
+    } else {
+      out.push(item);
+    }
+  }
+  return out;
+}
+
 export function collectResponse(response: HandlerResponse): BotResponseItem[] {
   const items: BotResponseItem[] = [];
 
@@ -307,18 +363,29 @@ export function collectResponse(response: HandlerResponse): BotResponseItem[] {
     items.push({ type: 'text', text: `[Archivo adjunto: ${response.attachment.filename}]`, ...({ _attachment: response.attachment } as object) });
   }
 
+  // El último texto se funde con la botonera que lo sigue (una sola burbuja).
+  // Con un adjunto en el medio no: el orden texto → archivo → botones manda.
+  const foldBody = (body: string): string => {
+    const last = items[items.length - 1];
+    if (response.attachment || !last || last.type !== 'text' || !last.text) return body;
+    const merged = foldIntoInteractiveBody(last.text, body);
+    if (merged == null) return body;
+    items.pop();
+    return merged;
+  };
+
   if (response.interactive) {
     if (response.interactive.type === 'buttons') {
       items.push({
         type: 'interactive',
-        interactive: { type: 'buttons', body: response.interactive.body, buttons: response.interactive.buttons },
+        interactive: { type: 'buttons', body: foldBody(response.interactive.body), buttons: response.interactive.buttons },
       });
     } else if (response.interactive.type === 'list') {
       items.push({
         type: 'interactive',
         interactive: {
           type: 'list',
-          body: response.interactive.body,
+          body: foldBody(response.interactive.body),
           buttonText: response.interactive.buttonText,
           sections: response.interactive.sections,
         },
@@ -335,7 +402,7 @@ export function collectResponse(response: HandlerResponse): BotResponseItem[] {
     if (suggestion && suggestion.type === 'buttons') {
       items.push({
         type: 'interactive',
-        interactive: { type: 'buttons', body: suggestion.body, buttons: suggestion.buttons },
+        interactive: { type: 'buttons', body: foldBody(suggestion.body), buttons: suggestion.buttons },
       });
     }
   }
@@ -872,20 +939,33 @@ async function processTextMessageWithReplay(
     console.log(`[INTERCEPT] cancelar descarta la acción diferida: "${deferredFirstActionStore.get(ctx.phone)!.originalText.slice(0, 60)}"`);
     deferredFirstActionStore.clear(ctx.phone);
   }
-  const items = await processTextMessageLogged(text, ctx);
+  let items = await processTextMessageLogged(text, ctx);
 
   // Mensajes proactivos que quedaron guardados por la ventana de 24 h de
   // WhatsApp (resúmenes, recordatorios, alertas): el usuario acaba de escribir,
-  // la ventana está abierta — se entregan después de su respuesta (CRN-2).
+  // la ventana está abierta — se entregan con su respuesta (CRN-2). Van ANTES
+  // de la botonera final (saludo → avisos → botones): al final quedaban debajo
+  // de los botones y los enterraban.
+  let deferredNotices: BotResponseItem[] = [];
   try {
     const { takeDeferredMessages } = await import('./proactive-delivery.js');
     const pendingMsgs = await takeDeferredMessages(Number(ctx.userId));
     if (pendingMsgs.length > 0) {
-      items.push({ type: 'text', text: `📬 Mientras no estabas te quedó ${pendingMsgs.length === 1 ? 'este aviso' : `${pendingMsgs.length} avisos`}:` });
-      for (const m of pendingMsgs) items.push({ type: 'text', text: m.message });
+      deferredNotices = [
+        { type: 'text', text: `📬 Mientras no estabas te quedó ${pendingMsgs.length === 1 ? 'este aviso' : `${pendingMsgs.length} avisos`}:` },
+        ...pendingMsgs.map(m => ({ type: 'text' as const, text: m.message })),
+      ];
     }
   } catch (err) {
     console.warn(`[proactive] entrega de diferidos falló para user ${ctx.userId}: ${(err as Error).message}`);
+  }
+  if (deferredNotices.length > 0) {
+    const last = items[items.length - 1];
+    const tail = last?.type === 'interactive' ? [last] : [];
+    const head = tail.length ? items.slice(0, -1) : items;
+    items = [...mergePromptItems(head), ...deferredNotices, ...tail];
+  } else {
+    items = mergePromptItems(items);
   }
 
   try {
@@ -924,7 +1004,7 @@ async function processTextMessageWithReplay(
         items.push({ type: 'text', text: `🔁 *Retomo lo que me habías pedido:*
 _"${stash.originalText}"_` });
         const replayed = await processTextMessageLogged(stash.originalText, ctx);
-        items.push(...replayed);
+        items.push(...mergePromptItems(replayed));
       }
     }
   } catch (err) {
@@ -962,7 +1042,21 @@ export async function blockedAccountReply(userId: ChannelContext['userId'], logD
   const { isAccountBlocked } = await import('../domain/auth/auth.types.js');
   if (!isAccountBlocked(rows[0]?.status)) return null;
   console.log(`[INTERCEPT] [BLOCKED] user=${userId} (${rows[0]?.status}) no se atiende ${logDetail}`);
-  return [{ type: 'text', text: '🔒 Tu cuenta está bloqueada. Si creés que es un error, escribinos a soporte.' }];
+  let base = 'https://miagro.app';
+  let supportLine = '';
+  try {
+    const { getSetting } = await import('./settings.service.js');
+    const publicUrl = await getSetting('PUBLIC_URL');
+    if (publicUrl && /^https?:\/\//.test(publicUrl)) base = publicUrl.replace(/\/$/, '');
+    const { getSupportLine } = await import('./support-contact.js');
+    supportLine = await getSupportLine();
+  } catch { /* sin datos de contacto: el aviso sale igual */ }
+  return [{
+    type: 'text',
+    text: '🔒 Tu cuenta está bloqueada y *no guardé* lo que me mandaste.\n\n' +
+      `Si es por un pago pendiente, entrá a ${base}/ingresar y renovalo desde *Mi cuenta*.\n` +
+      'Si creés que es un error, escribinos' + (supportLine ? `:\n${supportLine}` : ' a soporte.'),
+  }];
 }
 
 async function processTextMessageInner(
@@ -1038,6 +1132,7 @@ async function processTextMessageInner(
       } else {
         await conversationEngine.clearFlow(userId);
         const response = await financialHandler.resumeCreateCategory(userId, text, flowData);
+        applySideEffects(response.sideEffects, phone);
         return collectResponse(response);
       }
     }
@@ -1105,7 +1200,7 @@ async function processTextMessageInner(
         await conversationEngine.clearFlow(userId);
         const menuResponse = await systemHandler.handleCommand({ command: 'menu' }, userId, user, settings);
         return [
-          { type: 'text', text: '❌ Operacion cancelada.' },
+          { type: 'text', text: '❌ Operación cancelada.' },
           ...collectResponse(menuResponse),
         ];
       }
@@ -1406,14 +1501,23 @@ async function processTextMessageInner(
   if (pendingAct) {
     if (isCancelIntent(text)) {
       pendingActStore.clear(phone);
-      // El mensaje dice QUÉ se canceló: con un gasto o ingreso parcial decía
-      // "Actividad cancelada" (FIN-35). Y si había más en cola, cuántas (CONV-15).
-      const what = pendingAct.command === 'log_expense' ? 'Gasto cancelado'
-        : pendingAct.command === 'log_income' ? 'Ingreso cancelado'
-        : 'Cancelado';
-      const queued = Array.isArray(pendingAct.nextInQueue) ? pendingAct.nextInQueue.length : 0;
-      if (queued > 0) console.log(`[INTERCEPT] cancelar con ${queued} en cola: se cancela todo`);
-      return [{ type: 'text', text: `❌ ${what}.${queued > 0 ? ` También cancelé ${queued === 1 ? 'la otra pregunta que estaba en cola' : `las ${queued} preguntas que estaban en cola`}.` : ''}` }];
+      // El mensaje dice QUÉ se canceló y qué quedó registrado igual, también
+      // de lo que esperaba en cola: "Cancelado" a secas no decía si la venta
+      // sin precio seguía guardada (FIN-35, CONV-15).
+      const queue = Array.isArray(pendingAct.nextInQueue) ? pendingAct.nextInQueue : [];
+      const { describeCancelled } = await import('../middleware/pending-activity-pivot.js');
+      const lines: string[] = [];
+      for (const p of [pendingAct, ...queue]) {
+        try { lines.push(await describeCancelled(userId, p as never)); }
+        catch { lines.push('Lo que te estaba preguntando: *no se guardó*.'); }
+      }
+      console.log(`[INTERCEPT] cancelar: ${pendingAct.command}${queue.length ? ` + ${queue.length} en cola` : ''} — se cierra todo`);
+      return [{
+        type: 'text',
+        text: lines.length === 1
+          ? `❌ Cancelado. ${lines[0]}`
+          : `❌ Cancelé las ${lines.length} preguntas que tenía abiertas:\n${lines.map(l => `• ${l}`).join('\n')}`,
+      }];
     }
     // Saludo o "gracias" con una pregunta abierta: se contesta y se re-pregunta,
     // sin gastar la escalera. Antes cada "hola" contaba como intento fallido y
@@ -1805,8 +1909,7 @@ ${ask}` }];
       pendingStore.set(phone, corr.updatedPending as any);
       conversationLogger.log(userId, phone, text, corr.body!, 'command', 'correction_applied', null, null, false, Date.now() - startTime, true, 1.0, null, null, ctx.channel).catch(() => {});
       return [
-        { type: 'text', text: corr.body! },
-        { type: 'interactive', interactive: { type: 'buttons', body: '¿Confirmás?', buttons: corr.buttons! } } as BotResponseItem,
+        { type: 'interactive', interactive: { type: 'buttons', body: corr.body!, buttons: corr.buttons! } } as BotResponseItem,
       ];
     }
   }
@@ -2029,7 +2132,7 @@ ${ask}` }];
     }
     pendingStore.clear(phone);
     conversationLogger.log(userId, phone, text, 'Operacion cancelada.', 'command', 'cancel', null, null, aiUsed, Date.now() - startTime, false, confidence, toolCallsData, agentMode, ctx.channel).catch(() => {});
-    return [{ type: 'text', text: '❌ Operacion cancelada.' }];
+    return [{ type: 'text', text: '❌ Operación cancelada.' }];
   }
 
   // --- Phase 3: trial expired (access-gate blocked AI / writes) ---
@@ -2815,7 +2918,7 @@ export async function handleInteractiveReply(
   ctx: ChannelContext,
 ): Promise<BotResponseItem[]> {
   // Un token de botón solo lo puede usar el usuario al que se le mandó.
-  return runWithCallbackOwner(ctx.userId, () => handleInteractiveReplyInner(callbackId, ctx));
+  return runWithCallbackOwner(ctx.userId, async () => mergePromptItems(await handleInteractiveReplyInner(callbackId, ctx)));
 }
 
 async function handleInteractiveReplyInner(
@@ -2900,7 +3003,7 @@ async function handleInteractiveReplyInner(
       await conversationEngine.clearFlow(userId);
       const menuResponse = await systemHandler.handleCommand({ command: 'menu' }, userId, user, settings);
       return [
-        { type: 'text', text: '❌ Operacion cancelada.' },
+        { type: 'text', text: '❌ Operación cancelada.' },
         ...collectResponse(menuResponse),
       ];
     }
@@ -3079,7 +3182,7 @@ async function handleInteractiveReplyInner(
     pendingStore.clear(phone);
     pendingDeleteConfirmStore.clear(phone);
     conversationLogger.log(userId, phone, `[${callbackId}]`, 'Operacion cancelada.', 'command', 'cancel', null, null, false, null, false, null, null, null, ctx.channel).catch(() => {});
-    return [{ type: 'text', text: '❌ Operacion cancelada.' }];
+    return [{ type: 'text', text: '❌ Operación cancelada.' }];
   }
 
   // --- "¿$80 o $80.000?" de una corrección de monto en la tarjeta (FIN-17) ---
@@ -3095,8 +3198,7 @@ async function handleInteractiveReplyInner(
     const { renderCorrectionCard } = await import('../middleware/pending-correction-interceptor.js');
     const card = renderCorrectionCard(updated);
     return [
-      { type: 'text', text: card.body },
-      { type: 'interactive', interactive: { type: 'buttons', body: '¿Confirmás?', buttons: card.buttons } } as BotResponseItem,
+      { type: 'interactive', interactive: { type: 'buttons', body: card.body, buttons: card.buttons } } as BotResponseItem,
     ];
   }
 
@@ -3166,7 +3268,7 @@ async function handleInteractiveReplyInner(
     }
 
     // field_dup_cancel
-    return [{ type: 'text', text: '❌ Operacion cancelada.' }];
+    return [{ type: 'text', text: '❌ Operación cancelada.' }];
   }
 
   // --- Create plot ---

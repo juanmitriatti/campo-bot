@@ -553,8 +553,11 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
       h.fakeAgent.enqueueTool('log_expense', { amount: 50000, category: 'Combustible', description: 'gasoil' });
       const blocked = await h.send('gasté 50 mil en gasoil');
       const blockedText = h.allText(blocked);
-      expect(blockedText).toMatch(/necesitás crear un campo/i);
+      // Una sola burbuja con el botón (nota de Juan, nov 2026).
+      expect(blocked, blockedText).toHaveLength(1);
+      expect(blockedText).toMatch(/necesitás un campo/i);
       expect(blockedText).toMatch(/retomo esto solo/i);
+      expect(h.allButtons(blocked).map(x => x.id)).toContain('cmd_agregar_campo');
 
       // 2. Crear campo por SQL (simula el flujo de alta) — todavía sin lote
       const f = await h.q(`INSERT INTO fields (user_id, name) VALUES ($1, 'La Esperanza') RETURNING id`, [h.userId]);
@@ -725,14 +728,20 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
       const token = await expenseToken(b, fieldB, plotB, 7000);
       const first = await b.tap(`cat_pick_exp_${token}_${catB}`);
       expect(b.allText(first)).not.toMatch(/venció/i);
+      // Con "confirmar antes de guardar" (default) el botón de categoría muestra
+      // la tarjeta en vez de guardar directo (nota de Juan, nov 2026).
+      expect(b.allText(first)).toMatch(/¿Confirmo gasto\?/);
+      expect(await expensesOf(b)).toBe(0);
       const again = await b.tap(`cat_pick_exp_${token}_${catB}`);
-      expect(b.allText(again)).toMatch(/ya lo guardé/i);
+      expect(b.allText(again)).toMatch(/ya fue procesada/i);
       const other = (await b.q(`SELECT id FROM user_categories WHERE user_id = $1 AND name = 'Varios'`, [b.userId]))[0].id;
       await b.tap(`cat_pick_exp_${token}_${other}`);
+      await b.tap('confirm_pending');
       expect(await expensesOf(b)).toBe(1);
       // Dos gastos idénticos de verdad son dos botones distintos (nonce).
       const token2 = await expenseToken(b, fieldB, plotB, 7000);
       await b.tap(`cat_pick_exp_${token2}_${catB}`);
+      await b.tap('confirm_pending');
       expect(await expensesOf(b)).toBe(2);
       await b.q(`DELETE FROM expenses WHERE user_id = $1`, [b.userId]);
     });
@@ -5905,4 +5914,102 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
     });
   });
 
+
+  describe('notas de Juan sobre las conversaciones (nov 2026)', () => {
+    let h: PipelineHarness;
+    let fieldId: number;
+    const interactiveOf = (items: unknown[]) => (items as Array<{ type: string; interactive?: { body: string } }>).filter(i => i.type === 'interactive');
+    beforeAll(async () => {
+      h = await createPipelineHarness('notas-juan');
+      fieldId = ((await h.q(`INSERT INTO fields (user_id, name) VALUES ($1, 'La Esperanza') RETURNING id`, [h.userId]))[0] as { id: number }).id;
+      await h.q(`INSERT INTO plots (field_id, name, area_hectares) VALUES ($1, 'Norte', 100), ($1, 'Sur', 80)`, [fieldId]);
+    });
+    afterAll(async () => { await h?.cleanup(); });
+    beforeEach(async () => { await h.send('cancelar'); });
+
+    it('una pregunta = un mensaje: el texto se funde con la botonera que lo sigue', async () => {
+      const { foldIntoInteractiveBody, mergePromptItems } = await import('../../../services/message-pipeline.js');
+      // La muletilla que repite la pregunta se descarta.
+      expect(foldIntoInteractiveBody('💸 *Repuestos* — $30.000\n\n¿En qué lote lo registramos?', '¿En qué lote?')).toBe('💸 *Repuestos* — $30.000\n\n¿En qué lote lo registramos?');
+      expect(foldIntoInteractiveBody('Nombre: *X*\n\n¿Confirmamos?', '¿Creamos el campo?')).toBe('Nombre: *X*\n\n¿Confirmamos?');
+      // Un cuerpo con contenido propio se conserva debajo.
+      expect(foldIntoInteractiveBody('✅ Gasto registrado', '¿Y ahora?')).toBe('✅ Gasto registrado\n\n¿Y ahora?');
+      // No entra en el tope del canal → quedan dos mensajes.
+      expect(foldIntoInteractiveBody('x'.repeat(1200), '¿Y ahora?')).toBeNull();
+      // Tres burbujas (stock): la botonera ya trae los dos textos.
+      const merged = mergePromptItems([
+        { type: 'text', text: 'A registrada' },
+        { type: 'text', text: '¿Descontar 200 lt?' },
+        { type: 'interactive', interactive: { type: 'buttons', body: 'A registrada\n\n¿Descontar 200 lt?', buttons: [{ id: 'x', title: 'Sí' }] } },
+      ] as never);
+      expect(merged).toHaveLength(1);
+    });
+
+    it('gasto en un campo con varios lotes: la pregunta del lote es UNA burbuja', async () => {
+      h.fakeAgent.enqueueTool('log_expense', { amount: 30000, category: 'Repuestos', description: 'repuestos', field: 'La Esperanza' });
+      const items = await h.send('gasté 30 mil en repuestos en La Esperanza');
+      expect(items, h.allText(items)).toHaveLength(1);
+      expect(interactiveOf(items)).toHaveLength(1);
+      expect(h.allText(items)).toMatch(/30\.000/);
+      expect(h.allText(items).match(/¿En qué lote/g) ?? []).toHaveLength(1);
+    });
+
+    it('«Crear lote» pregunta el nombre y la respuesta crea el lote con su superficie', async () => {
+      const ask = await h.tap('cmd_agregar_lote');
+      expect(h.allText(ask)).toMatch(/¿Cómo se llama el lote\?/);
+      const done = await h.send('Loma 60 ha');
+      expect(h.allText(done)).toMatch(/Loma/);
+      const rows = await h.q(`SELECT name, area_hectares::float AS ha FROM plots WHERE field_id = $1 AND name ILIKE 'loma' AND deleted_at IS NULL`, [fieldId]);
+      expect(rows).toEqual([{ name: 'Loma', ha: 60 }]);
+    });
+
+    it('cancelar dice qué quedó registrado: la compra sin precio sigue guardada', async () => {
+      h.fakeAgent.enqueueTool('add_livestock', { category: 'vaca', count: 9, plot: 'Norte', is_purchase: true });
+      const bought = await h.send('compré 9 vacas en el Norte');
+      expect(h.allText(bought)).toMatch(/A cuánto fue la compra/i);
+      const cancelled = h.allText(await h.send('cancelar'));
+      expect(cancelled).toMatch(/compra de 9 vaca.*ya está registrada.*sin precio/i);
+      expect(await h.q(`SELECT 1 FROM livestock_groups WHERE user_id = $1 AND count = 9`, [h.userId])).toHaveLength(1);
+      // Cancelado de verdad: un número suelto ya no se toma como precio.
+      h.fakeAgent.enqueue([]);
+      await h.send('500000');
+      expect(await h.q(`SELECT 1 FROM expenses WHERE user_id = $1 AND deleted_at IS NULL`, [h.userId])).toHaveLength(0);
+    });
+
+    it('corrección de monto ambigua: una burbuja «Corregir importe», sin «¿Confirmás?»', async () => {
+      h.fakeAgent.enqueueTool('log_expense', { amount: 50000, category: 'Combustible', description: 'gasoil', plot: 'Norte' });
+      await h.send('gasté 50 lucas de gasoil en el Norte');
+      const ask = await h.send('no, eran 80');
+      expect(ask, h.allText(ask)).toHaveLength(1);
+      expect(h.allText(ask)).toMatch(/Corregir importe/);
+      expect(h.allText(ask)).not.toMatch(/¿Confirmás\?/);
+      const card = await h.tap('pcorr_amt_80000');
+      expect(card, h.allText(card)).toHaveLength(1);
+      expect(h.allText(card)).toMatch(/¿Confirmo gasto\?[\s\S]*80\.000/);
+      expect(h.allButtons(card).map(b => b.id)).toEqual(['confirm_pending', 'cancel_pending']);
+      await h.tap('cancel_pending');
+    });
+
+    it('los avisos guardados van antes de la botonera final, no debajo', async () => {
+      const { deferMessage } = await import('../../../services/proactive-delivery.js');
+      await deferMessage(h.userId as never, 'weekly_summary', 'RESUMEN-SEMANAL-DE-PRUEBA');
+      const items = await h.send('hola') as Array<{ type: string; text?: string }>;
+      const notice = items.findIndex(i => i.text === 'RESUMEN-SEMANAL-DE-PRUEBA');
+      expect(notice, h.allText(items as never)).toBeGreaterThan(0);
+      const lastInteractive = items.map(i => i.type).lastIndexOf('interactive');
+      if (lastInteractive >= 0) expect(notice).toBeLessThan(lastInteractive);
+    });
+
+    it('prueba vencida y «no entendí» dicen lo que pasó, sin mandar a escribir «menú»', async () => {
+      const { trialExpiredCopy } = await import('../../../services/access-gate.service.js');
+      expect(await trialExpiredCopy()).toMatch(/^⏳ \*Tu prueba terminó\* y por eso \*no guardé\*/);
+      const { buildFallbackMessage } = await import('../../../utils/fuzzy-suggest.js');
+      expect(buildFallbackMessage('asdf qwer')).not.toMatch(/menú/);
+      expect(buildFallbackMessage('asdf qwer')).toMatch(/otras alternativas/);
+      const { repeatedTapMessage } = await import('../../../middleware/one-shot-callbacks.js');
+      expect(repeatedTapMessage('cmdtok_abc')).toMatch(/ya fue procesada/);
+      expect(repeatedTapMessage('undo_del_abc')).not.toMatch(/lluvia/);
+      expect(repeatedTapMessage('rainfld_abc_0')).toMatch(/lluvia/);
+    });
+  });
 });

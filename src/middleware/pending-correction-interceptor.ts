@@ -120,7 +120,7 @@ export function tryApplyPendingCorrection(
     return {
       applied: true,
       updatedPending: updated,
-      body: `🤔 ¿Cuánto era: *${formatMoney(ambiguous.small, 'ARS')}* o *${formatMoney(ambiguous.big, 'ARS')}*?`,
+      body: `✏️ *Corregir importe*\n\n¿Quisiste decir *${formatMoney(ambiguous.small, 'ARS')}* o *${formatMoney(ambiguous.big, 'ARS')}*?`,
       buttons: [
         { id: `pcorr_amt_${ambiguous.small}`, title: formatMoney(ambiguous.small, 'ARS') },
         { id: `pcorr_amt_${ambiguous.big}`, title: formatMoney(ambiguous.big, 'ARS') },

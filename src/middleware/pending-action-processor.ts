@@ -410,6 +410,7 @@ export const SLOT_LABEL: Record<string, string> = {
   amount: 'el monto',
   category: 'la categoría',
   plot: 'el lote',
+  plotName: 'el nombre del lote',
   field: 'el campo',
   crop: 'el cultivo',
   quantity: 'la cantidad',

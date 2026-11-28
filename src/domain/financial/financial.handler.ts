@@ -294,13 +294,18 @@ function withDeferredFirstAction(resp: HandlerResponse, rawText: string | null |
   return {
     ...resp,
     sideEffects: { ...resp.sideEffects, setDeferredFirstAction: { originalText } },
-    messages: [...(resp.messages ?? []), '_Apenas tengas el campo y el lote creados, retomo esto solo._'],
+    // Una sola burbuja: el aviso va en el cuerpo de la botonera si la hay.
+    ...(resp.interactive
+      ? { interactive: { ...resp.interactive, body: `${resp.interactive.body}\n\n${RESUME_NOTE}` } as HandlerResponse['interactive'] }
+      : { messages: [...(resp.messages ?? []), RESUME_NOTE] }),
   };
 }
 
+const RESUME_NOTE = '_Apenas tengas el campo y el lote creados, retomo esto solo._';
+
 function buildNoFieldsBlockResponse(actionLabel: string): HandlerResponse {
   return {
-    messages: [`Para registrar ${actionLabel} primero necesitás crear un campo.\n\n📍 Escribí *agregar campo [nombre]*\nEj: *agregar campo La Esperanza*`],
+    messages: [],
     interactive: {
       type: 'buttons',
       body: `Necesitás un campo para registrar ${actionLabel}.`,
@@ -311,13 +316,25 @@ function buildNoFieldsBlockResponse(actionLabel: string): HandlerResponse {
   };
 }
 
+/** "¿Cómo se llama el lote?" con la pregunta abierta (pending), nunca texto suelto. */
+export function askPlotName(cmd: Record<string, unknown> = {}): HandlerResponse {
+  const ask = '🌾 ¿Cómo se llama el lote?\n_Podés sumar la superficie: «Norte 120 ha»._';
+  const { plotName: _drop, ...rest } = cmd;
+  return {
+    messages: [ask],
+    sideEffects: {
+      setPendingActivity: { command: 'add_plot', data: { ...rest, command: 'add_plot', __askedName: true }, missing: ['plotName'], askPrompt: ask },
+    },
+  };
+}
+
 function buildNoPlotsBlockResponse(actionLabel: string, fieldName?: string): HandlerResponse {
   const fieldHint = fieldName ? ` en campo ${fieldName}` : '';
   return {
-    messages: [`Para registrar ${actionLabel} primero necesitás crear un lote.\n\n📍 Escribí *agregar lote [nombre]${fieldHint}*\nEj: *agregar lote norte${fieldHint}*`],
+    messages: [],
     interactive: {
       type: 'buttons',
-      body: `Necesitás un lote para registrar ${actionLabel}.`,
+      body: `Necesitás un lote${fieldHint} para registrar ${actionLabel}.`,
       buttons: [
         { id: 'cmd_agregar_lote', title: 'Crear Lote' },
       ],
@@ -3416,9 +3433,25 @@ export class FinancialHandler {
 
       case 'add_plot': {
         if (!cmd.plotName || (typeof cmd.plotName === 'string' && cmd.plotName.trim() === '')) {
-          return {
-            messages: ['Necesitás indicar el nombre del lote.\n\n📍 Escribí *agregar lote [nombre] en campo [campo]*'],
-          };
+          // Invariante 5: la pregunta del nombre queda abierta (antes era texto
+          // suelto y el nombre pelado que seguía caía en el agente).
+          return askPlotName(cmd as Record<string, unknown>);
+        }
+        if (cmd.__askedName && typeof cmd.plotName === 'string') {
+          // Respuesta a "¿Cómo se llama el lote?": puede venir con prefijo,
+          // superficie o campo ("lote Norte 120 ha en La Esperanza").
+          let name = cmd.plotName.trim().replace(/^(?:(?:agregar|crear|nuevo)\s+)?(?:el\s+)?lote\s+/i, '');
+          const inField = name.match(/\s+en\s+(?:el\s+)?(?:campo\s+)?(.+)$/i);
+          if (inField && !cmd.fieldName) { cmd.fieldName = inField[1].trim(); name = name.slice(0, inField.index).trim(); }
+          const area = name.match(/[\s,]+(?:de\s+)?(\d+(?:[.,]\d+)?)\s*(?:has?\.?|hect[aá]reas?)\s*$/i);
+          if (area) {
+            const a = parseFloat(area[1].replace(',', '.'));
+            if (a > 0 && a < 100000 && cmd.hectares == null) cmd.hectares = a;
+            name = name.slice(0, area.index).trim();
+          }
+          if (!name) return askPlotName(cmd as Record<string, unknown>);
+          cmd.plotName = name;
+          delete cmd.__askedName;
         }
         // Server-side defense: "agregá el lote norte de 10 has" sometimes leaves
         // the area spec ("10 has") in fieldName. Treat it as hectares and drop
@@ -4005,15 +4038,42 @@ export class FinancialHandler {
     const hash = createHash('sha256').update(payload).digest('base64url').slice(0, 16);
     if (!consumeOnce(userId as number, `catpayload:${hash}`)) {
       const what = kind === 'expense' ? 'gasto' : 'ingreso';
-      console.log(`[INTERCEPT] botón de categoría repetido: user=${userId} — el ${what} ya se guardó`);
-      return { messages: [`✅ Ese ${what} ya lo guardé con el primer toque. No lo cargué de nuevo.`] };
+      console.log(`[INTERCEPT] botón de categoría repetido: user=${userId} — el ${what} ya se tomó con el primer toque`);
+      // Genérico a propósito: con "confirmar antes de guardar" el primer toque
+      // mostró la tarjeta, todavía no guardó.
+      return { messages: ['ℹ️ Esta operación ya fue procesada. No realicé ningún cambio adicional.'] };
     }
     data.category = category.name;
+    const resFieldName = fieldId ? await this.lookupFieldName(userId, fieldId) : null;
+    const resPlotName = plotId ? await this.lookupPlotName(userId, plotId) : null;
+    // La preferencia de confirmar vale por CUALQUIER camino: antes el botón de
+    // categoría guardaba directo aunque el usuario pidiera confirmar (el mismo
+    // gasto con la categoría clara sí mostraba la tarjeta).
+    let confirmFirst = false;
+    try {
+      const { UserRepository } = await import('../users/user.repository.js');
+      confirmFirst = (await new UserRepository().getSettings(userId))?.confirm_before_save === true;
+    } catch { /* sin configuración legible: se guarda como antes */ }
+    if (confirmFirst) {
+      console.log(`[INTERCEPT] categoría elegida por botón: user=${userId} pide confirmar — se muestra la tarjeta`);
+      return {
+        messages: prefix ? [prefix.trim()] : [],
+        interactive: {
+          type: 'buttons' as const,
+          body: buildPendingMessage(kind, data as ParsedExpense | ParsedIncome, resFieldName, resPlotName),
+          buttons: [
+            { id: 'confirm_pending', title: 'Confirmar' },
+            { id: 'cancel_pending', title: 'Cancelar' },
+          ],
+        },
+        sideEffects: {
+          setPending: { type: kind, data, fieldId, fieldName: resFieldName, plotId, plotName: resPlotName, timestamp: Date.now() },
+        },
+      } as HandlerResponse;
+    }
     if (kind === 'expense') await this.service.saveExpense(userId, data as ParsedExpense, fieldId, plotId);
     else await this.service.saveIncome(userId, data as ParsedIncome, fieldId, plotId);
     this.categoryService.bump(category.id).catch(() => {});
-    const resFieldName = fieldId ? await this.lookupFieldName(userId, fieldId) : null;
-    const resPlotName = plotId ? await this.lookupPlotName(userId, plotId) : null;
     const confirmation = kind === 'expense'
       ? await buildExpenseConfirmation(data as ParsedExpense, resFieldName, resPlotName)
       : await buildIncomeConfirmation(data as ParsedIncome, resFieldName, resPlotName);

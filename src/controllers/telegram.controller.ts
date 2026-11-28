@@ -254,7 +254,7 @@ async function handleTelegramUpdate(req: Request): Promise<void> {
           : await getSetting('TG_LINKED_WELCOME_NO_FIELDS_MESSAGE');
         const greeting = r.already_linked
           ? '✅ Tu cuenta ya estaba vinculada. ¡Listo para operar!'
-          : interpolate(template || '✅ *Cuenta vinculada*', { botName });
+          : interpolate(template || '✅ *Telegram vinculado*', { botName });
         await sendTelegramMessage(chatId, greeting);
       } catch (err) {
         if (err instanceof VerificationError) {
