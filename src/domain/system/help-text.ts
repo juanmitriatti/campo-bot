@@ -106,7 +106,7 @@ _Escribí "menú" para volver._`,
 *Clima*
 • "clima"
 • "clima mañana"
-• "clima 7 días"
+• "clima 5 días"
 • "clima en lote norte"
 
 *Alertas*

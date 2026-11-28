@@ -93,12 +93,12 @@ const POST_ACTIVITIES_SHOWN = buttons('¿Y ahora?',
 );
 const POST_RAINFALL = buttons('¿Y ahora?',
   b('cmd_reporte_lluvia', '📊 Lluvia este mes'),
-  b('menu_clima', '☀️ Clima 7 días'),
+  b('menu_clima', '☀️ Clima 5 días'),
   b('flow_new_rainfall', '🌧️ Otra lluvia'),
 );
 const POST_RAINFALL_SHOWN = buttons('¿Y ahora?',
   b('menu_lluvia', '🌧️ Registrar lluvia'),
-  b('menu_clima', '☀️ Clima 7 días'),
+  b('menu_clima', '☀️ Clima 5 días'),
   b('back_menu', '📋 Menú'),
 );
 const POST_OBSERVATION = buttons('¿Y ahora?',

@@ -1701,7 +1701,7 @@ export class AgronomyHandler {
           const wcoords = weatherCoords(weatherCity, weatherFieldRow);
           const [current, forecastData] = await Promise.all([
             getCurrentWeather(weatherCity, wcoords),
-            getForecast(weatherCity, 3, { coords: wcoords }),
+            getForecast(weatherCity, 5, { coords: wcoords }),
           ]);
           let msg = formatCurrentWeather(current) + '\n\n' + formatForecast(forecastData);
           const rainAlert = checkRainAlert(forecastData, settings.rain_alert_mm);
@@ -1732,6 +1732,11 @@ export class AgronomyHandler {
         try {
           const forecastData = await getForecast(fcCity, cmd.days as number, { coords: weatherCoords(fcCity) });
           let msg = formatForecast(forecastData);
+          // La fuente da hasta 5 días: si pidió más, se dice (antes "clima 7 días" mostraba menos sin avisar).
+          const got = forecastData.forecast?.length ?? 0;
+          if (Number(cmd.days) > got && got > 0) msg += `
+
+_El pronóstico disponible llega hasta ${got} días._`;
           const rainAlert = checkRainAlert(forecastData, settings.rain_alert_mm);
           if (rainAlert) msg += '\n\n' + rainAlert;
           return { messages: [msg], suggestionKey: 'weather_shown' };
@@ -1755,7 +1760,7 @@ export class AgronomyHandler {
           const fcoords = weatherCoords(fieldCity, field as { latitude?: number | null; longitude?: number | null; province?: string | null } | null);
           const [current, forecastData] = await Promise.all([
             getCurrentWeather(fieldCity, fcoords),
-            getForecast(fieldCity, 3, { coords: fcoords }),
+            getForecast(fieldCity, 5, { coords: fcoords }),
           ]);
           let msg = `\ud83d\udccd *Lote ${cmd.fieldName}* (${fieldCity})\n\n`;
           msg += formatCurrentWeather(current) + '\n\n' + formatForecast(forecastData);
