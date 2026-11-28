@@ -1249,7 +1249,7 @@ export class FinancialHandler {
     // insumo-like + cantidad+unidad alcanzan (product cae a description).
     const stockishCategory = /agroqu|insumo|veterinar|fertiliz|semilla/i.test((data.category || ''));
     const stockProduct = data.product || (stockishCategory ? data.description : null);
-    if ((data.expenseType === 'insumo' || stockishCategory) && stockProduct && data.quantity && data.unit && fieldId) {
+    if ((data.expenseType === 'insumo' || stockishCategory) && stockProduct && data.quantity && data.unit && fieldId && !(data as { stockLoaded?: boolean }).stockLoaded) {
       try {
         const { StockPurchaseService } = await import('../stock/stock-purchase.service.js');
         const purchaseService = new StockPurchaseService();
@@ -1770,7 +1770,7 @@ export class FinancialHandler {
       }
 
       // Suggest stock entry for insumo expenses
-      if (expenseData.expenseType === 'insumo' && expenseData.product && expenseData.quantity && expenseData.unit && pending.fieldId) {
+      if (expenseData.expenseType === 'insumo' && expenseData.product && expenseData.quantity && expenseData.unit && pending.fieldId && !(expenseData as { stockLoaded?: boolean }).stockLoaded) {
         try {
           const { StockPurchaseService } = await import('../stock/stock-purchase.service.js');
           const purchaseService = new StockPurchaseService();
@@ -3898,6 +3898,8 @@ export class FinancialHandler {
       // pregunta "¿en qué lote?" ni se hereda uno del contexto.
       ...(c.fieldLevel === true ? { fieldLevel: true } : {}),
       ...(c.noLocation === true ? { noLocation: true } : {}),
+      // El insumo ya entró al depósito (compra cargada como stock): no se vuelve a ofrecer.
+      ...(c.__stockLoaded === true ? { stockLoaded: true } : {}),
     } as ParsedExpense;
   }
 

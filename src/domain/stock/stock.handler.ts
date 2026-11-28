@@ -1,4 +1,4 @@
-import { isAmbiguousStockSpend } from '../../utils/lexicon.js';
+import { isAmbiguousStockSpend, mentionsPurchase } from '../../utils/lexicon.js';
 import { dismissButton } from '../../middleware/dismiss-button.js';
 import { callbackPayloadStore } from '../../middleware/callback-payload-store.js';
 import type { StockRow, StockRenderCtx } from './stock-renderers.js';
@@ -169,16 +169,48 @@ export class StockHandler {
     }
 
     const newLabel = created ? ' (nuevo)' : '';
-    return {
-      messages: [
-        `📥 *Stock registrado*\n\n` +
-        `  📦 *${item.name}*${newLabel}\n` +
-        `  ➕ ${quantity} ${unit}\n` +
-        `  📊 Total: *${item.current_quantity} ${item.unit}*\n` +
-        `  🏭 ${item.warehouse_name || 'Principal'} (${item.field_name || ''})` +
-        expenseLine,
-      ],
-    };
+    const plural = (n: number, u: string) => (u === 'bolsa' && Number(n) !== 1 ? 'bolsas' : u);
+    const stockMsg =
+      `📥 *Stock registrado*\n\n` +
+      `  📦 *${item.name}*${newLabel}\n` +
+      `  ➕ ${quantity} ${unit}\n` +
+      `  📊 Total: *${item.current_quantity} ${plural(Number(item.current_quantity), item.unit)}*\n` +
+      `  🏭 ${item.warehouse_name || 'Principal'} (${item.field_name || ''})` +
+      expenseLine;
+
+    // Una COMPRA sin precio: el stock ya entró, pero falta la plata. Se pregunta
+    // con la pregunta abierta (el gasto se arma con la respuesta). Antes el
+    // insumo quedaba en el depósito y la compra no aparecía en ningún gasto.
+    const bulk = (cmd as ParsedCommand & { _bulkMode?: boolean })._bulkMode === true;
+    if (!expenseLine && !bulk && mentionsPurchase(cmd.originalText as string | null)) {
+      const unitOne = unit.replace(/s$/, '');
+      const ask = `💰 ¿Cuánto pagaste por ${quantity.toLocaleString('es-AR')} ${unit} de ${item.name}? Decime el total o el precio por ${unitOne}.`;
+      console.log(`[INTERCEPT] add_stock: compra sin precio (${quantity} ${unit} de ${item.name}) — se pregunta el monto`);
+      return {
+        messages: [],
+        interactive: {
+          type: 'buttons',
+          body: `${stockMsg}\n\n${ask}`,
+          buttons: [dismissButton('Sin precio', '👌 Listo, la compra queda sin precio: el stock ya está cargado y no registré ningún gasto. Cuando lo sepas, contame cuánto salió.', { closes: 'log_expense' })],
+        },
+        sideEffects: {
+          setPendingActivity: {
+            command: 'log_expense',
+            data: {
+              command: 'log_expense', quantity, unit, product: item.name, description: item.name,
+              expenseType: 'insumo', category: (cmd.category as string) ?? null,
+              plotName: plotLabel || null, fieldName: item.field_name ?? fieldNameForStock ?? null,
+              // El insumo ya está en el depósito: el gasto no vuelve a ofrecer cargarlo.
+              __stockLoaded: true,
+            },
+            missing: ['amount'],
+            askPrompt: ask,
+          },
+        },
+      };
+    }
+
+    return { messages: [stockMsg] };
   }
 
   /** «gasté 200 litros»: no se toca el stock hasta saber si entraron o salieron. */

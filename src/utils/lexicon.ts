@@ -613,6 +613,15 @@ export function mentionsAdditionalArea(text: string): boolean {
 }
 
 /**
+ * El mensaje cuenta una COMPRA ("compré 10 bolsas de urea", "compramos
+ * glifosato"). Una compra es plata aunque el agente la haya leído solo como
+ * entrada de stock: si no trae precio, se pregunta.
+ */
+export function mentionsPurchase(text: string | null | undefined): boolean {
+  return /\b(?:compr(?:e|amos|aron|o|aste)|compra\s+de|adquiri\w*)\b/.test(normLex(text ?? ''));
+}
+
+/**
  * El monto se dijo como TOTAL de la compra o la venta ("80 mil en total", "por
  * todo", "por las 10"). Sin esta marca ni una de precio por unidad, un monto
  * sobre varias unidades es ambiguo y se pregunta.

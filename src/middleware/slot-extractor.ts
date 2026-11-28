@@ -62,7 +62,11 @@ export function extractSlots(
   const currency = extractCurrency(stripped);
   if (currency) out.currency = currency;
 
-  const cat = ctx.type === 'income'
+  // Un mensaje que es SOLO plata ("80 lucas", "80000 pesos en total") no nombra
+  // ninguna categoría: el detector por palabras devolvía «Hacienda» / «Sueldos»
+  // y esa categoría inventada se pegaba al gasto que esperaba el monto.
+  const onlyMoney = /^[\s$]*(?:u\$s|us\$|usd)?\s*[\d.,]+\s*(?:mil|lucas?|palos?|millones|mill[oó]n|k|m)?\s*(?:pesos?|d[oó]lares?|usd)?\s*(?:en\s+total|total|por\s+todo|c\/u|cada\s+un[oa])?\s*$/i.test(stripped);
+  const cat = onlyMoney ? null : ctx.type === 'income'
     ? detectarCategoriaIngreso(stripped)
     : ctx.type === 'expense'
       ? detectarCategoria(stripped)
@@ -124,7 +128,15 @@ function stripCorrectionPrefix(text: string): string {
 function extractAmount(text: string): number | null {
   // Try the canonical normalizer first (handles "4.5 palos", "800 lucas", "$50000")
   const n = normalizarMonto(text);
-  return n && n > 0 ? n : null;
+  if (n && n > 0) return n;
+  // "80 mil en total" / "fueron 80000 por todo": la aclaración de que es el
+  // total dejaba el monto sin leer y la pregunta se repetía.
+  const bare = text.replace(/\b(?:en\s+total|total|por\s+todo|todo\s+junto|fueron|fue|son|eran)\b/gi, ' ').replace(/\s+/g, ' ').trim();
+  if (bare && bare !== text.trim()) {
+    const m = normalizarMonto(bare);
+    if (m && m > 0) return m;
+  }
+  return null;
 }
 
 /** Fuente única de monedas y su slang (lexicon, invariante 4): "u$s 500" quedaba en pesos (FIN-14). */

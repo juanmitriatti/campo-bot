@@ -6242,6 +6242,28 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
       }
     });
 
+    it('«compré 10 bolsas de urea» leído como stock: carga el stock y pregunta cuánto pagó', async () => {
+      await h.q(`DELETE FROM expenses WHERE user_id = $1`, [h.userId]);
+      await h.q(`UPDATE user_settings SET confirm_before_save = false WHERE user_id = $1`, [h.userId]);
+      try {
+        h.fakeAgent.enqueueTool('add_stock', { product: 'urea', quantity: 10, unit: 'bolsas', category: 'Fertilizantes' });
+        const first = await h.send('compré 10 bolsas de urea');
+        expect(h.allText(first)).toMatch(/Stock registrado[\s\S]*Total: \*10 bolsas\*[\s\S]*¿Cuánto pagaste por 10 bolsas de urea\?/i);
+        expect(h.allButtons(first).map(b => b.title)).toEqual(['Sin precio']);
+        const ask = await h.send('80 lucas');
+        expect(h.allText(ask)).toMatch(/son el total o por bolsa\?/);
+        const done = await h.tap(h.allButtons(ask).find(b => b.title === 'Es el total')!.id);
+        // El gasto queda por $80.000 y NO se vuelve a ofrecer cargar el stock.
+        expect(h.allText(done)).toMatch(/80\.000/);
+        expect(h.allText(done)).not.toMatch(/al stock/i);
+        const stock = await h.q(`SELECT current_quantity::float AS q FROM stock_items WHERE user_id = $1 AND LOWER(name) = 'urea'`, [h.userId]);
+        expect(stock.map(r => r.q)).toEqual([10]);
+      } finally {
+        await h.q(`UPDATE user_settings SET confirm_before_save = true WHERE user_id = $1`, [h.userId]);
+        await h.q(`DELETE FROM expenses WHERE user_id = $1`, [h.userId]);
+      }
+    });
+
     it('la misma lluvia mandada dos veces no se suma sola: se pregunta', async () => {
       await h.q(`DELETE FROM rainfall WHERE user_id = $1`, [h.userId]);
       const total = async () => (await h.q(`SELECT COALESCE(SUM(millimeters), 0)::float AS mm FROM rainfall WHERE user_id = $1`, [h.userId]))[0].mm;
