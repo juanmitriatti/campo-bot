@@ -121,14 +121,29 @@ export function duplicateRowsQuestion(rows: Array<{ what: string; cmd: Record<st
   };
 }
 
+/** Lo que trae el formulario, en una línea, para compararlo con lo ya cargado. */
+function describeFormRecord(cmd: Record<string, unknown>): string | null {
+  const ar = (n: unknown) => Number(n).toLocaleString('es-AR');
+  const where = [cmd.plotName, cmd.fieldName].filter(v => typeof v === 'string' && v).join(' · ');
+  const tail = `${where ? ` · ${where}` : ''}${cmd.eventDate ? ` · ${formatDateAR(String(cmd.eventDate))}` : ''}`;
+  if (Number(cmd.amount) > 0) {
+    return `${cmd.currency === 'USD' ? 'US$ ' : '$'}${ar(cmd.amount)}${cmd.category ? ` en ${String(cmd.category)}` : ''}${tail}`;
+  }
+  if (Number(cmd.count) > 0 && cmd.category) return `${headsLabel(Number(cmd.count), String(cmd.category))}${tail}`;
+  if (cmd.product) return `${String(cmd.product)}${tail}`;
+  return tail ? tail.replace(/^ · /, '') : null;
+}
+
 /** Pregunta en vez de descartar: [Guardar igual] re-ejecuta el comando completo. */
 export function duplicateQuestion(what: string, cmd: Record<string, unknown>): HandlerResponse {
+  // Las dos cosas a la vista: lo que ya está y lo que trae el formulario.
+  const fromForm = describeFormRecord(cmd);
   return {
     messages: [],
     needsConfirmation: true,
     interactive: {
       type: 'buttons',
-      body: `⚠️ Desde que abriste este formulario ya cargaste ${what}. ¿Es otro registro? Todavía no guardé nada.`,
+      body: `⚠️ Desde que abriste este formulario ya cargaste ${what}.${fromForm ? `\n\n*Del formulario:* ${fromForm}` : ''}\n\n¿Es otro registro? Todavía no guardé nada: lo que completaste queda esperando tu respuesta.`,
       buttons: [
         { id: saveAnywayId(cmd), title: 'Guardar igual' },
         dismissButton('No, ya está', '👍 Listo, no lo cargué de nuevo. Lo que ya tenías registrado quedó como estaba.'),

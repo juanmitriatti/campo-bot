@@ -3169,7 +3169,7 @@ export class AgronomyHandler {
 
           const thisBatchLabel = isAppend ? '*En este mensaje:*' : '*Total:*';
           const netTotalNote = totalNetKg !== totalKg ? ` → *${totalNetKg.toLocaleString('es-AR')} kg netos* (merma ${(totalKg - totalNetKg).toLocaleString('es-AR')} kg)` : '';
-          let loadsMsg = `${header}\n${loadLines.join('\n')}\n\n📊 ${thisBatchLabel} ${totalKg.toLocaleString('es-AR')} kg${netTotalNote}${runningTotalLine}${humLine}${qualityLine}`;
+          let loadsMsg = `${header}\n${loadLines.join('\n')}\n\n📊 ${thisBatchLabel} ${totalKg.toLocaleString('es-AR')} kg${netTotalNote ? ' brutos' : ''}${netTotalNote}${runningTotalLine}${humLine}${qualityLine}`;
 
           if (harvested && !isAppend) {
             const label = formatSeasonLabel(harvested.season_year, harvested.season_type);
@@ -4215,7 +4215,7 @@ ${doseNote}`;
             if (suggestion) {
               const messages = [confirmation];
               const stockMsg = suggestion.totalQuantity > 0
-                ? `\n📦 Tenés ${suggestion.currentStock} ${suggestion.unit} de *${suggestion.product}* en ${suggestion.warehouseName}.\n¿Descontar *${suggestion.totalQuantity} ${suggestion.unit}*?`
+                ? `\n📦 Tenés ${suggestion.currentStock} ${suggestion.unit} de *${suggestion.product}* en ${suggestion.warehouseName}.\n${dosePerHa && plotHectares ? `Para esta aplicación se estiman *${suggestion.totalQuantity} ${suggestion.unit}* (${dosePerHa.toLocaleString('es-AR')} ${suggestion.unit}/ha × ${plotHectares.toLocaleString('es-AR')} ha). ¿Los descuento del stock?` : `¿Descontar *${suggestion.totalQuantity} ${suggestion.unit}*?`}`
                 : `\n📦 Tenés ${suggestion.currentStock} ${suggestion.unit} de *${suggestion.product}* en ${suggestion.warehouseName}.\n¿Descontar del stock?`;
               messages.push(stockMsg);
               return {
