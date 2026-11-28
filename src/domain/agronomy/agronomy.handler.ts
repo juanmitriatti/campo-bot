@@ -539,7 +539,7 @@ export class AgronomyHandler {
     // igual que escribir el nombre). Con más, la lista escrita.
     const what = [activityLabel, cmd.product ? `con ${String(cmd.product)}` : null].filter(Boolean).join(' ');
     const picker = usePicker && plots.length <= 10
-      ? buildPlotInteractiveGrouped(plots.map(p => ({ plotName: p.name, fieldName: p.field_name })), `¿En qué lote?${what ? ` _(${what})_` : ''}\n\nElegilo de la lista o escribime el nombre.`)
+      ? buildPlotInteractiveGrouped(plots.map(p => ({ plotName: p.name, fieldName: p.field_name })), `${cmd.__answeredByChat === true && what ? `👍 Anotado: ${what}.\n\n` : ''}¿En qué lote?${what && cmd.__answeredByChat !== true ? ` _(${what})_` : ''}\n\nElegilo de la lista o escribime el nombre.`)
       : null;
     return {
       messages: picker ? [] : [`¿En qué lote?\n\n${formatPlotListGrouped(plots)}`],
@@ -2370,7 +2370,7 @@ export class AgronomyHandler {
         }
 
         if (plotResult.type === 'ask_user') {
-          return this.withFormOffer(this.buildAskPlotResponse('siembra', plotResult.plots, cmd, !sowFormOffer(cmd)), sowFormOffer(cmd));
+          return this.withFormOffer(this.buildAskPlotResponse(cmd.__answeredByChat === true && cmd.crop ? `siembra de ${String(cmd.crop).toLowerCase()}` : 'siembra', plotResult.plots, cmd, cmd.__answeredByChat === true || !sowFormOffer(cmd)), sowFormOffer(cmd));
         }
 
         // "soja de segunda" puede llegar dentro del nombre del cultivo: el orden
@@ -2705,7 +2705,7 @@ export class AgronomyHandler {
         }
 
         if (plotResult.type === 'ask_user') {
-          return this.withFormOffer(this.buildAskPlotResponse('cosecha', plotResult.plots, cmd, !harvestFormOffer(cmd)), harvestFormOffer(cmd));
+          return this.withFormOffer(this.buildAskPlotResponse('cosecha', plotResult.plots, cmd, cmd.__answeredByChat === true || !harvestFormOffer(cmd)), harvestFormOffer(cmd));
         }
 
         // Crop inference: when the agent didn't pass a crop, try active first,

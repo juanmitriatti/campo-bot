@@ -6193,6 +6193,26 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
       await h.q(`DELETE FROM domain_events WHERE user_id = $1`, [h.userId]);
     });
 
+    it('«sembré» → «soja» por chat: confirma el cultivo, ofrece los lotes y queda UNA siembra', async () => {
+      await h.q(`DELETE FROM domain_events WHERE user_id = $1`, [h.userId]);
+      await h.q(`DELETE FROM plot_crops WHERE plot_id IN (SELECT id FROM plots WHERE field_id = $1)`, [fieldId]);
+      // Sin lote reciente en el contexto: el usuario no nombró ninguno.
+      await h.q(`UPDATE conversation_state SET last_field_id = NULL, last_plot_id = NULL, context_stack = '[]'::jsonb WHERE user_id = $1`, [h.userId]);
+      h.fakeAgent.enqueueTool('sow_crop', {});
+      expect(h.allText(await h.send('sembré'))).toMatch(/qué cultivo/i);
+      const ask = await h.send('soja');
+      expect(h.allText(ask)).toMatch(/Anotado: siembra de soja\.[\s\S]*¿En qué lote\?/);
+      const sur = h.allButtons(ask).find(b => b.title === 'Sur')!;
+      await h.tap(sur.id);
+      const rows = await h.q(
+        `SELECT pc.crop, p.name AS plot FROM plot_crops pc JOIN plots p ON p.id = pc.plot_id WHERE p.field_id = $1`, [fieldId]);
+      expect(rows).toHaveLength(1);
+      expect(String(rows[0].plot)).toBe('Sur');
+      expect(String(rows[0].crop)).toMatch(/soja/i);
+      await h.q(`DELETE FROM domain_events WHERE user_id = $1`, [h.userId]);
+      await h.q(`DELETE FROM plot_crops WHERE plot_id IN (SELECT id FROM plots WHERE field_id = $1)`, [fieldId]);
+    });
+
     it('la misma lluvia mandada dos veces no se suma sola: se pregunta', async () => {
       await h.q(`DELETE FROM rainfall WHERE user_id = $1`, [h.userId]);
       const total = async () => (await h.q(`SELECT COALESCE(SUM(millimeters), 0)::float AS mm FROM rainfall WHERE user_id = $1`, [h.userId]))[0].mm;
