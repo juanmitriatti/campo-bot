@@ -542,6 +542,11 @@ export async function submitForm(
     return { ok: true, message: resultText, response };
   };
 
-  const owned = () => runWithCallbackOwner(session.user_id, commit);
+  // Los botones que arma el submit («Guardar igual», confirmar un valor raro)
+  // quedan en la base antes de devolver la respuesta.
+  const owned = () => runWithCallbackOwner(session.user_id, async () => {
+    try { return await commit(); }
+    finally { await (await import('../middleware/callback-persistence.js')).flushCallbackState(); }
+  });
   return opts.alreadyLocked ? owned() : withUserLock(lockKeyForSession(session), owned);
 }

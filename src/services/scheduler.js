@@ -977,6 +977,8 @@ async function dailyCleanupTick() {
     await accountPurgeTick();
     const { purgeInboundMessages } = await import('./wa-inbound-claim.js');
     await purgeInboundMessages();
+    const { purgeCallbackState } = await import('../middleware/callback-persistence.js');
+    await purgeCallbackState();
   } catch (err) {
     console.error('[cleanup] Unexpected error:', err);
     logError('scheduler', 'DAILY_CLEANUP_ERROR', err);

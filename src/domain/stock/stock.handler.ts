@@ -1,4 +1,5 @@
 import { isAmbiguousStockSpend } from '../../utils/lexicon.js';
+import { dismissButton } from '../../middleware/dismiss-button.js';
 import { callbackPayloadStore } from '../../middleware/callback-payload-store.js';
 import type { StockRow, StockRenderCtx } from './stock-renderers.js';
 import { StockService } from './stock.service.js';
@@ -199,7 +200,7 @@ export class StockHandler {
         buttons: [
           { id: `stkdir_in_${token}`, title: 'Los compré' },
           { id: `stkdir_out_${token}`, title: 'Los usé' },
-          { id: 'cancel_action', title: 'Cancelar' },
+          dismissButton('Cancelar', '👌 Listo, no toqué el stock.'),
         ],
       },
     };

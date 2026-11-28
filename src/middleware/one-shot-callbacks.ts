@@ -22,7 +22,11 @@
  * entregas con segundos de diferencia.
  */
 
-const TTL_MS = 15 * 60 * 1000;
+import { CALLBACK_TTL_MS, persistUse, _ignoreCallbackStateBeforeNow } from './callback-persistence.js';
+
+// Un toque consumido vale mientras viva el botón (24 h) y queda en la base
+// (`callback_uses`): un reinicio no deja repetir la operación.
+const TTL_MS = CALLBACK_TTL_MS + 60 * 60 * 1000;
 
 /**
  * Callbacks cuya re-ejecución corrompe datos en vez de solo duplicarlos.
@@ -43,6 +47,8 @@ const ONE_SHOT_PREFIXES = [
   'cmdtok_',
   // «Deshacer» un borrado: el botón viejo no puede revivir lo que se volvió a borrar.
   'undo_del_',
+  // "Ahora no" / "No" / "No, ya está": se contesta una vez.
+  'dismiss_',
 ];
 
 /**
@@ -120,11 +126,21 @@ export function consumeOnce(userId: number | string, callbackId: string): boolea
   const seen = used.get(key);
   if (seen !== undefined && now - seen <= TTL_MS) return false;
   used.set(key, now);
-  if (used.size > 500) cleanup(now);
+  persistUse(String(userId), oneShotKey(callbackId) ?? callbackId, now);
+  if (used.size > 5000) cleanup(now);
   return true;
+}
+
+/** Carga en memoria los toques ya consumidos de un usuario (vienen de la base). */
+export function restoreConsumed(userId: number | string, uses: Array<{ key: string; usedAt: number }>): void {
+  for (const u of uses) {
+    const key = `${userId}:${u.key}`;
+    if (!used.has(key)) used.set(key, u.usedAt);
+  }
 }
 
 /** Sólo para tests. */
 export function _resetOneShotCallbacks(): void {
   used.clear();
+  _ignoreCallbackStateBeforeNow();
 }

@@ -33,6 +33,7 @@ import { exceedsYieldCeiling, yieldCeilingKgPerHa, looksLikeQuintalsAsKg } from 
 import { isImplausibleSprayDose } from '../../utils/value-validator.js';
 import { localidadLookup, type Localidad } from '../../services/localidad-lookup.service.js';
 import { callbackPayloadStore } from '../../middleware/callback-payload-store.js';
+import { dismissButton } from '../../middleware/dismiss-button.js';
 import { isPlaceholder } from '../../utils/guards.js';
 import { userExplicitlyReferencedPlot } from '../../utils/plot-intent.js';
 import { hasPlotContextSignal } from '../../utils/plot-context-signals.js';
@@ -2570,7 +2571,7 @@ export class AgronomyHandler {
                 body: ask,
                 buttons: [
                   { id: `cmdtok_${callbackPayloadStore.set(JSON.stringify({ ...cmd, plotName: h.plot_name, fieldName: h.field_name }))}`, title: 'Sí, sumarlas' },
-                  { id: 'cancel_action', title: 'No' },
+                  dismissButton('No', '👌 No las sumé a ese lote. Decime a qué lote van estas cargas, o escribí *cancelar* para no cargarlas.'),
                 ],
               },
               sideEffects: { setPendingActivity: { command: 'harvest_crop', data: { ...cmd }, missing: ['plot'], askPrompt: `📍 ¿A qué lote van estas cargas? (ej: ${h.plot_name})` } },
@@ -2627,7 +2628,7 @@ export class AgronomyHandler {
                 body: ask,
                 buttons: several
                   ? [{ id: PENDING_ALL_PLOTS_ID, title: `Repartir en los ${harvested.length}`.slice(0, 20) }, ...plotButtons]
-                  : [...plotButtons, { id: 'cancel_action', title: 'No' }],
+                  : [...plotButtons, dismissButton('No', '👌 Entonces decime de qué lote es ese rinde, o escribí *cancelar* para no cargarlo.')],
               },
               sideEffects: {
                 setPendingActivity: {
@@ -2782,7 +2783,7 @@ export class AgronomyHandler {
                 buttons: [
                   { id: `cmdtok_${callbackPayloadStore.set(JSON.stringify(asQq))}`, title: `Fueron ${yieldKgPerHa} qq/ha` },
                   { id: `cmdtok_${callbackPayloadStore.set(JSON.stringify({ ...cmd, __yieldConfirmed: true }))}`, title: `Sí, ${yieldKgPerHa} kg/ha` },
-                  { id: 'cancel_action', title: 'Cancelar' },
+                  dismissButton('Corregir', '✏️ Dale, no guardé ese rinde. Mandámelo de nuevo con el número correcto.'),
                 ],
               },
             };
@@ -2812,7 +2813,7 @@ export class AgronomyHandler {
                 buttons: [
                   { id: `cmdtok_${callbackPayloadStore.set(JSON.stringify({ ...cmd, __yieldConfirmed: true }))}`, title: 'Sí, es correcto' },
                   // Desde un formulario, corregir = volver a abrirlo.
-                  { id: (cmd as Record<string, unknown>).__fromForm ? 'form_open_harvest' : 'cancel_action', title: 'Corregir' },
+                  ((cmd as Record<string, unknown>).__fromForm ? { id: 'form_open_harvest', title: 'Corregir' } : dismissButton('Corregir', '✏️ Dale, no lo guardé. Mandámelo de nuevo con el dato correcto.')),
                 ],
               },
             };
@@ -2945,7 +2946,7 @@ export class AgronomyHandler {
                   body,
                   buttons: [
                     { id: `sowharv_${payload}`, title: 'Sí, registrar' },
-                    { id: 'cancel_action', title: 'No' },
+                    dismissButton('No', '👌 No registré la siembra ni la cosecha. Si el cultivo o el lote eran otros, mandámelo de nuevo.'),
                   ],
                 },
               };
@@ -4042,7 +4043,7 @@ export class AgronomyHandler {
                 body: `⚠️ *${dose}* es muchísimo para una fumigación. ¿Está bien? Si fue un error de unidades, tocá Corregir y mandámelo de nuevo.`,
                 buttons: [
                   { id: `cmdtok_${callbackPayloadStore.set(JSON.stringify({ ...cmd, __doseConfirmed: true }))}`, title: 'Sí, es correcto' },
-                  { id: (cmd as Record<string, unknown>).__fromForm ? 'form_open_activity' : 'cancel_action', title: 'Corregir' },
+                  ((cmd as Record<string, unknown>).__fromForm ? { id: 'form_open_activity', title: 'Corregir' } : dismissButton('Corregir', '✏️ Dale, no lo guardé. Mandámelo de nuevo con el dato correcto.')),
                 ],
               },
             };

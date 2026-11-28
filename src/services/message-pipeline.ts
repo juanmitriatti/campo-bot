@@ -48,7 +48,9 @@ import { PendingObservationStore } from '../middleware/pending-observations.js';
 import { PendingActivityStore, PENDING_ALL_PLOTS_ID } from '../middleware/pending-activities.js';
 import { TypedPendingStore, clearAllTypedStores } from '../middleware/typed-pending-store.js';
 import { compactEntityName, findEquivalentName } from '../utils/entity-matcher.js';
-import { isOneShotCallback, consumeOnce, repeatedTapMessage } from '../middleware/one-shot-callbacks.js';
+import { isOneShotCallback, consumeOnce, repeatedTapMessage, restoreConsumed } from '../middleware/one-shot-callbacks.js';
+import { flushCallbackState } from '../middleware/callback-persistence.js';
+import { DISMISS_PREFIX, readDismiss } from '../middleware/dismiss-button.js';
 import { runWithCallbackOwner, callbackPayloadStore } from '../middleware/callback-payload-store.js';
 import { isFieldOwner } from '../domain/shared/field-access.js';
 import { tipEngine } from './tip-engine.js';
@@ -193,6 +195,15 @@ export const deferredFirstActionStore = new TypedPendingStore<{ originalText: st
 // campo que el usuario había restaurado (auditoría oct 2026, CAM-6). Ahora el
 // tap solo vale si coincide con la confirmación pendiente, y la consume.
 export const pendingDeleteConfirmStore = new TypedPendingStore<{ kind: 'field' | 'plot'; fieldName: string | null; plotName?: string | null }>('delete_confirm');
+
+/**
+ * Botones y toques de un solo uso del usuario, desde la base (migración 144).
+ * Se llama al entrar cada mensaje y cada toque: después de un deploy el botón
+ * sigue sirviendo y un segundo toque sigue sin repetir la operación.
+ */
+export async function hydrateCallbackState(userId: ChannelContext['userId']): Promise<void> {
+  restoreConsumed(userId as never, await callbackPayloadStore.hydrate(userId as never));
+}
 
 export async function hydratePendingStores(phone: string): Promise<void> {
   // TODOS los stores se hidratan — antes solo 4 de 11 persistían y un restart
@@ -890,7 +901,11 @@ export async function processTextMessage(
 ): Promise<BotResponseItem[]> {
   // Los tokens de botón que se creen en este turno quedan atados a este
   // usuario (ver middleware/callback-payload-store.ts).
-  return runWithCallbackOwner(ctx.userId, () => processTextMessageWithReplay(text, ctx));
+  return runWithCallbackOwner(ctx.userId, async () => {
+    await hydrateCallbackState(ctx.userId);
+    try { return await processTextMessageWithReplay(text, ctx); }
+    finally { await flushCallbackState(); }
+  });
 }
 
 /**
@@ -2918,7 +2933,11 @@ export async function handleInteractiveReply(
   ctx: ChannelContext,
 ): Promise<BotResponseItem[]> {
   // Un token de botón solo lo puede usar el usuario al que se le mandó.
-  return runWithCallbackOwner(ctx.userId, async () => mergePromptItems(await handleInteractiveReplyInner(callbackId, ctx)));
+  return runWithCallbackOwner(ctx.userId, async () => {
+    await hydrateCallbackState(ctx.userId);
+    try { return mergePromptItems(await handleInteractiveReplyInner(callbackId, ctx)); }
+    finally { await flushCallbackState(); }
+  });
 }
 
 async function handleInteractiveReplyInner(
@@ -3178,11 +3197,36 @@ async function handleInteractiveReplyInner(
     return [{ type: 'text', text: '⚠️ Esa confirmación ya venció — *no borré nada*. Si querés borrarlo, pedímelo de nuevo.' }];
   }
 
+  // --- "Ahora no" / "No" / "No, ya está": cada botón trae su respuesta ---
+  if (callbackId.startsWith(DISMISS_PREFIX)) {
+    const dismiss = readDismiss(callbackId);
+    if (!dismiss) {
+      console.log(`[INTERCEPT] botón de descarte vencido: user=${userId} ${callbackId}`);
+      return [{ type: 'text', text: '⏰ Ese botón ya venció. No hice ningún cambio.' }];
+    }
+    const open = pendingActStore.get(phone);
+    if (dismiss.closes && open?.command === dismiss.closes) {
+      pendingActStore.clear(phone);
+      console.log(`[INTERCEPT] descarte: se cierra la pregunta abierta de ${dismiss.closes} (user=${userId})`);
+    }
+    conversationLogger.log(userId, phone, `[${callbackId}]`, dismiss.reply, 'command', 'dismiss', null, null, false, null, false, null, null, null, ctx.channel).catch(() => {});
+    return [{ type: 'text', text: dismiss.reply }];
+  }
+
   if (callbackId === 'cancel_destructive' || callbackId === 'cancel_action' || callbackId === 'cancel_pending') {
+    // Dice QUÉ se canceló: "Operación cancelada" a secas no decía si el gasto
+    // se había guardado o si se había borrado algo.
+    const card = pendingStore.get(phone) as { type?: string; _destructiveCommand?: unknown } | undefined;
+    const hadDelete = !!pendingDeleteConfirmStore.get(phone) || !!card?._destructiveCommand;
     pendingStore.clear(phone);
     pendingDeleteConfirmStore.clear(phone);
-    conversationLogger.log(userId, phone, `[${callbackId}]`, 'Operacion cancelada.', 'command', 'cancel', null, null, false, null, false, null, null, null, ctx.channel).catch(() => {});
-    return [{ type: 'text', text: '❌ Operación cancelada.' }];
+    const reply = hadDelete ? '👍 Listo, no borré nada.'
+      : card?.type === 'expense' ? '❌ Gasto cancelado: no se guardó.'
+      : card?.type === 'income' ? '❌ Ingreso cancelado: no se guardó.'
+      : card ? '❌ Cancelado: no se guardó nada.'
+      : 'ℹ️ No había nada pendiente para cancelar. No hice ningún cambio.';
+    conversationLogger.log(userId, phone, `[${callbackId}]`, reply, 'command', 'cancel', null, null, false, null, false, null, null, null, ctx.channel).catch(() => {});
+    return [{ type: 'text', text: reply }];
   }
 
   // --- "¿$80 o $80.000?" de una corrección de monto en la tarjeta (FIN-17) ---

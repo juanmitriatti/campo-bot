@@ -11,7 +11,9 @@
  * a short opaque token (~8 chars) in callback_data. When the user taps,
  * the interactive router looks up the original payload by token.
  *
- * Storage: in-memory Map with 10-minute TTL. Tokens are 6 random bytes
+ * Storage: memoria + tabla `callback_tokens` (migración 144), 24 h. La memoria
+ * es la que se consulta; la base la respalda (callback-persistence.ts) para que
+ * un deploy o una demora no venzan el botón. Tokens are 6 random bytes
  * (base64url-encoded, ~8 chars). Collisions are theoretically possible
  * but cleaned up by TTL — for a 10-min window with <1000 active picks
  * the collision probability is ~10^-12.
@@ -35,6 +37,7 @@
 
 import { randomBytes } from 'crypto';
 import { AsyncLocalStorage } from 'async_hooks';
+import { CALLBACK_TTL_MS, persistToken, loadCallbackState, _ignoreCallbackStateBeforeNow } from './callback-persistence.js';
 
 const ownerContext = new AsyncLocalStorage<string>();
 
@@ -43,7 +46,7 @@ export function runWithCallbackOwner<T>(owner: number | string, fn: () => T): T 
   return ownerContext.run(String(owner), fn);
 }
 
-const TTL_MS = 10 * 60 * 1000; // 10 minutes
+const TTL_MS = CALLBACK_TTL_MS; // 24 h
 
 class CallbackPayloadStore {
   private map = new Map<string, { payload: string; timestamp: number; owner?: string }>();
@@ -51,8 +54,11 @@ class CallbackPayloadStore {
   /** Register a payload, return a short token to embed in callback_data. */
   set(payload: string): string {
     const token = randomBytes(6).toString('base64url'); // 8 chars
-    this.map.set(token, { payload, timestamp: Date.now(), owner: ownerContext.getStore() });
-    if (this.map.size > 500) this.cleanup();
+    const timestamp = Date.now();
+    const owner = ownerContext.getStore();
+    this.map.set(token, { payload, timestamp, owner });
+    persistToken(token, owner, payload, timestamp);
+    if (this.map.size > 5000) this.cleanup();
     return token;
   }
 
@@ -80,9 +86,19 @@ class CallbackPayloadStore {
     }
   }
 
+  /** Trae de la base los botones vigentes de este usuario que no estén en memoria. */
+  async hydrate(owner: number | string): Promise<Array<{ key: string; usedAt: number }>> {
+    const state = await loadCallbackState(String(owner));
+    for (const t of state.tokens) {
+      if (!this.map.has(t.token)) this.map.set(t.token, { payload: t.payload, timestamp: t.createdAt, owner: String(owner) });
+    }
+    return state.uses;
+  }
+
   /** For tests. */
   _clear(): void {
     this.map.clear();
+    _ignoreCallbackStateBeforeNow();
   }
 
   /** For tests/observability. */

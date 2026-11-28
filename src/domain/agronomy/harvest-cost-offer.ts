@@ -11,6 +11,7 @@
  * tn" (P2-12, QA siembra/cosecha 9 sep 2026).
  */
 import type { HandlerResponse, UserId } from '../../types/index.js';
+import { dismissButton } from '../../middleware/dismiss-button.js';
 import { logError } from '../../services/error-logger.js';
 
 export async function buildHarvestCostOffer(
@@ -41,8 +42,8 @@ export async function buildHarvestCostOffer(
         body,
         buttons: [
           { id: `harvest_cost_yes_${plotCropId}`, title: '💵 Cargar costo' },
-          // cancel_action lo atiende el pipeline directamente (no pasa por el router)
-          { id: 'cancel_action', title: 'Ahora no' },
+          // Decir que no a algo opcional no cancela nada: la cosecha ya está.
+          dismissButton('Ahora no', '👌 Listo, sigo sin cargar el costo. La cosecha quedó registrada; cuando quieras decime *costo de cosecha* y lo cargamos.'),
         ],
       },
     };

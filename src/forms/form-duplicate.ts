@@ -3,6 +3,7 @@
 // descarta: se PREGUNTA. Para sospechar tienen que coincidir la fecha y el
 // lugar, además del dato; el mismo gasoil en otro lote es otro gasto.
 import { pool } from '../config/db.js';
+import { dismissButton } from '../middleware/dismiss-button.js';
 import { formatDateAR } from '../utils/date.js';
 import type { FormAction } from './form-definitions.js';
 import type { ResolvedRefs } from './form-commands.js';
@@ -113,7 +114,7 @@ export function duplicateRowsQuestion(rows: Array<{ what: string; cmd: Record<st
       body: `⚠️ Desde que abriste este formulario ya cargaste ${rows.map(r => r.what).join(' y ')}. ¿Son otros? Esos todavía no los guardé.${rest}`,
       buttons: [
         ...shown.map(r => ({ id: saveAnywayId(r.cmd), title: `Guardar ${r.cmd.count} ${String(r.cmd.category)}`.slice(0, 20) })),
-        { id: 'cancel_action', title: 'No, ya está' },
+        dismissButton('No, ya está', '👍 Listo, no lo cargué de nuevo. Lo que ya tenías registrado quedó como estaba.'),
       ],
     },
   };
@@ -129,7 +130,7 @@ export function duplicateQuestion(what: string, cmd: Record<string, unknown>): H
       body: `⚠️ Desde que abriste este formulario ya cargaste ${what}. ¿Es otro registro? Todavía no guardé nada.`,
       buttons: [
         { id: saveAnywayId(cmd), title: 'Guardar igual' },
-        { id: 'cancel_action', title: 'No, ya está' },
+        dismissButton('No, ya está', '👍 Listo, no lo cargué de nuevo. Lo que ya tenías registrado quedó como estaba.'),
       ],
     },
   };

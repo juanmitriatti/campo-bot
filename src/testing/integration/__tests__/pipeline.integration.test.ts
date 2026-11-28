@@ -6011,5 +6011,47 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
       expect(repeatedTapMessage('undo_del_abc')).not.toMatch(/lluvia/);
       expect(repeatedTapMessage('rainfld_abc_0')).toMatch(/lluvia/);
     });
+    it('paso 1: un botón con datos sobrevive a un reinicio y sigue siendo de un solo uso', async () => {
+      const { callbackPayloadStore, runWithCallbackOwner } = await import('../../../middleware/callback-payload-store.js');
+      const { flushCallbackState } = await import('../../../middleware/callback-persistence.js');
+      const { consumeOnce, restoreConsumed } = await import('../../../middleware/one-shot-callbacks.js');
+      const token = runWithCallbackOwner(h.userId, () => callbackPayloadStore.set('{"dato":"del formulario"}'));
+      expect(consumeOnce(h.userId, `cmdtok_${token}`)).toBe(true);
+      await flushCallbackState();
+      // "Reinicio": la memoria del proceso se pierde.
+      (callbackPayloadStore as unknown as { map: Map<string, unknown> }).map.clear();
+      expect(runWithCallbackOwner(h.userId, () => callbackPayloadStore.get(token))).toBeNull();
+      const uses = await callbackPayloadStore.hydrate(h.userId);
+      expect(runWithCallbackOwner(h.userId, () => callbackPayloadStore.get(token))).toBe('{"dato":"del formulario"}');
+      // El toque consumido también vuelve: no se repite la operación.
+      expect(uses.map(u => u.key)).toContain(`cmdtok_${token}`);
+      restoreConsumed(h.userId, uses);
+      expect(consumeOnce(h.userId, `cmdtok_${token}`)).toBe(false);
+      // Y sigue atado a su dueño.
+      expect(runWithCallbackOwner(999999999, () => callbackPayloadStore.get(token))).toBeNull();
+    });
+
+    it('paso 1: «Ahora no» contesta lo suyo y no toca la tarjeta abierta', async () => {
+      const { runWithCallbackOwner } = await import('../../../middleware/callback-payload-store.js');
+      const { dismissButton } = await import('../../../middleware/dismiss-button.js');
+      h.fakeAgent.enqueueTool('log_expense', { amount: 50000, category: 'Combustible', description: 'gasoil', plot: 'Norte' });
+      await h.send('gasté 50 lucas de gasoil en el Norte'); // deja la tarjeta ¿Confirmo?
+      const btn = runWithCallbackOwner(h.userId, () => dismissButton('Ahora no', '👌 Listo, sigo sin cargar el costo.'));
+      const reply = h.allText(await h.tap(btn.id));
+      expect(reply).toMatch(/sigo sin cargar el costo/);
+      expect(reply).not.toMatch(/cancelad/i);
+      expect(h.allText(await h.tap(btn.id))).toMatch(/ya fue procesada/);
+      // La tarjeta del gasto sigue ahí: confirmarla lo guarda.
+      await h.tap('confirm_pending');
+      expect(await h.q(`SELECT 1 FROM expenses WHERE user_id = $1 AND amount = 50000 AND deleted_at IS NULL`, [h.userId])).toHaveLength(1);
+      await h.q(`DELETE FROM expenses WHERE user_id = $1`, [h.userId]);
+    });
+
+    it('paso 1: «Cancelar» de una tarjeta dice qué canceló', async () => {
+      h.fakeAgent.enqueueTool('log_expense', { amount: 7000, category: 'Combustible', description: 'gasoil', plot: 'Norte' });
+      await h.send('gasté 7 mil de gasoil en el Norte');
+      expect(h.allText(await h.tap('cancel_pending'))).toMatch(/Gasto cancelado: no se guardó/);
+      expect(h.allText(await h.tap('cancel_action'))).toMatch(/No había nada pendiente/);
+    });
   });
 });
