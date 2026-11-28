@@ -6149,6 +6149,33 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
       expect(await heads()).toEqual([20]);
       expect(await spent()).toEqual([18000]);
     });
+    it('la misma lluvia mandada dos veces no se suma sola: se pregunta', async () => {
+      await h.q(`DELETE FROM rainfall WHERE user_id = $1`, [h.userId]);
+      const total = async () => (await h.q(`SELECT COALESCE(SUM(millimeters), 0)::float AS mm FROM rainfall WHERE user_id = $1`, [h.userId]))[0].mm;
+      h.fakeAgent.enqueueTool('log_rainfall', { quantity: 30 });
+      await h.send('llovieron 30 mm');
+      expect(await total()).toBe(30);
+
+      h.fakeAgent.enqueueTool('log_rainfall', { quantity: 30 });
+      const again = await h.send('llovieron 30 mm');
+      expect(h.allText(again)).toMatch(/misma lluvia o es otra/);
+      expect(await total()).toBe(30);
+      const same = h.allButtons(again).find(b => b.title === 'Es la misma')!;
+      expect(h.allText(await h.tap(same.id))).toMatch(/no la sumé/);
+      expect(await total()).toBe(30);
+
+      h.fakeAgent.enqueueTool('log_rainfall', { quantity: 30 });
+      const third = await h.send('llovieron 30 mm');
+      await h.tap(h.allButtons(third).find(b => b.title === 'Es otra lluvia')!.id);
+      expect(await total()).toBe(60);
+
+      // Si el mensaje dice que es otra, no se pregunta.
+      h.fakeAgent.enqueueTool('log_rainfall', { quantity: 30 });
+      await h.send('a la tarde llovieron 30 mm más');
+      expect(await total()).toBe(90);
+      await h.q(`DELETE FROM rainfall WHERE user_id = $1`, [h.userId]);
+    });
+
     it('paso 3: varias acciones sin lote → se pregunta el lote de CADA registro, uno por uno', async () => {
       await h.q(`DELETE FROM expenses WHERE user_id = $1`, [h.userId]);
       await h.q(`UPDATE user_settings SET confirm_before_save = false WHERE user_id = $1`, [h.userId]);

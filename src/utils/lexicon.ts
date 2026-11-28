@@ -612,6 +612,17 @@ export function mentionsAdditionalArea(text: string): boolean {
     || /\b\d+(?:[.,]\d+)?\s*(ha|has|hectareas?)\s+mas\b/.test(t);
 }
 
+/**
+ * El mensaje dice que la lluvia es OTRA, además de la ya cargada ("18 mm más",
+ * "llovió de nuevo", "otros 10 mm"). Con esa marca no se pregunta si es la
+ * misma lluvia repetida: el usuario ya lo dijo.
+ */
+export function mentionsAdditionalRain(text: string): boolean {
+  const t = normLex(text);
+  return /\b(otras?|otros|de\s+nuevo|otra\s+vez|nuevamente|volvio\s+a\s+llover|ademas)\b/.test(t)
+    || /\bmm\s+mas\b|\bmilimetros\s+mas\b|\bmas\s+\d/.test(t);
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Plan futuro SIN nada hecho (invariante 12): "el sábado fumigo el Norte",
 // "mañana tengo que pagar el flete", "hay que vacunar la semana que viene".

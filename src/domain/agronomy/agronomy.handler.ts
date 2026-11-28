@@ -1,3 +1,4 @@
+import { mentionsAdditionalRain } from '../../utils/lexicon.js';
 import type { ScoutingRow, ScoutingRenderCtx } from './scouting-renderers.js';
 import type { HarvestRow, HarvestRenderCtx } from './harvest-renderers.js';
 import { sowFormOffer, harvestFormOffer } from '../../forms/activity-form-offer.js';
@@ -1918,6 +1919,7 @@ export class AgronomyHandler {
           // el mismo campo se descartaba como doble tap. El one-shot es por token.
           const rainTok = callbackPayloadStore.set(JSON.stringify({
             mm, eventDate: cmd.eventDate ? String(cmd.eventDate) : null,
+            another: mentionsAdditionalRain((cmd.originalText as string | null) || ''),
             fields: rainfallUserFields.slice(0, 10).map(f => f.name),
           }));
           if (rainfallUserFields.length <= 3) {
@@ -1948,6 +1950,38 @@ export class AgronomyHandler {
         }
 
         const rainfallDate = cmd.eventDate ? String(cmd.eventDate) : null;
+
+        // La MISMA lluvia mandada dos veces (mismo campo, día y milímetros) no se
+        // suma sola: 30 mm reenviados quedaban en 60 sin que nadie lo pidiera. Se
+        // pregunta. En un mensaje con varias acciones no se frena (se suma y se ve).
+        const saidAnother = (cmd as Record<string, unknown>).__rainConfirmed === true
+          || mentionsAdditionalRain((cmd.originalText as string | null) || '');
+        if (!saidAnother && (cmd as ParsedCommand & { _bulkMode?: boolean })._bulkMode !== true) {
+          const { pool } = await import('../../config/db.js');
+          const { rows: sameDay } = await pool.query(
+            `SELECT millimeters::float AS total, last_added_mm::float AS last FROM rainfall
+              WHERE user_id = $1 AND COALESCE(field_id, 0) = COALESCE($2, 0)
+                AND rainfall_date = COALESCE($3::date, (NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date)`,
+            [userId, fieldId ?? null, rainfallDate],
+          );
+          const prev = sameDay[0] as { total: number; last: number | null } | undefined;
+          if (prev && Number(prev.last ?? prev.total) === Number(mm)) {
+            const where = fieldLabel || 'tu campo';
+            console.log(`[INTERCEPT] lluvia repetida: ${mm} mm ya cargados en ${where} — se pregunta antes de sumar`);
+            return {
+              messages: [],
+              interactive: {
+                type: 'buttons' as const,
+                body: `🌧️ Ya tenés cargados *${mm} mm* en *${where}* para ese día (van *${prev.total} mm*). ¿Estos ${mm} mm son la misma lluvia o es otra?`,
+                buttons: [
+                  dismissButton('Es la misma', `👌 Listo, no la sumé. Quedan *${prev.total} mm* en ${where}.`),
+                  { id: `cmdtok_${callbackPayloadStore.set(JSON.stringify({ ...cmd, fieldName: fieldLabel ?? cmd.fieldName, __rainConfirmed: true }))}`, title: 'Es otra lluvia' },
+                ],
+              },
+            };
+          }
+        }
+
         const saved = await this.repo.saveRainfall(userId, mm, fieldId, rainfallDate);
 
         // R01 fix: dedup now accumulates (no more REJECTED). If the saved row has
@@ -2616,14 +2650,20 @@ export class AgronomyHandler {
             const ask = several
               ? `📊 Hoy cosechaste ${names}. ¿Las ${yieldLabel} son de todos? Si es así, ${Number(cmd.yieldKg) > 0 ? 'las reparto según la superficie de cada lote' : 'les pongo ese rinde a cada uno'}; si no, decime de qué lote.`
               : `📊 ¿Las ${yieldLabel} son de la cosecha de hoy en ${names}?`;
-            const plotButtons = harvested.slice(0, several ? 2 : 1).map(h => ({
+            const plotButtons = harvested.slice(0, several ? 9 : 1).map(h => ({
               id: `cmdtok_${callbackPayloadStore.set(JSON.stringify({ ...cmd, plotName: h.plot_name, fieldName: h.field_name }))}`,
               title: several ? String(h.plot_name).slice(0, 20) : 'Sí',
             }));
             console.log(`[INTERCEPT] harvest_crop rinde sin lote: ${harvested.length} cosecha(s) de hoy (${harvested.map(h => h.plot_name).join(', ')}) → pregunto si es de esas`);
             return {
               messages: [],
-              interactive: {
+              // Con 3 o más lotes no entran en botones: lista con todos.
+              interactive: several && plotButtons.length > 2 ? {
+                type: 'list' as const,
+                body: ask,
+                buttonText: 'Elegir',
+                sections: [{ title: 'Rinde', rows: [{ id: PENDING_ALL_PLOTS_ID, title: `Repartir en los ${harvested.length}`.slice(0, 24) }, ...plotButtons.map(b => ({ id: b.id, title: b.title.slice(0, 24) }))] }],
+              } : {
                 type: 'buttons' as const,
                 body: ask,
                 buttons: several
@@ -3137,7 +3177,10 @@ export class AgronomyHandler {
         }
 
         const label = formatSeasonLabel(harvested.season_year, harvested.season_type);
-        let harvestMsg = `🌾 *Cosecha registrada*\n*${cap(crop)}* en ${plotLabel}\n📅 Campaña ${label}`;
+        // Sumar el rinde a una cosecha que ya estaba registrada no es otra cosecha.
+        const onlyYield = isAppend && !!(yieldKg || computedKgPerHa);
+        const inBulk = (cmd as ParsedCommand & { _bulkMode?: boolean })._bulkMode === true;
+        let harvestMsg = `${onlyYield ? '📊 *Rinde cargado*' : '🌾 *Cosecha registrada*'}\n*${cap(crop)}* en ${plotLabel}\n📅 Campaña ${label}`;
         if (yieldKg || computedKgPerHa) {
           if (yieldKg) harvestMsg += `\n📊 Rendimiento: ${yieldKg.toLocaleString('es-AR')} kg`;
           if (computedKgPerHa) harvestMsg += yieldKg ? ` (${computedKgPerHa.toLocaleString('es-AR')} kg/ha)` : `\n📊 Rendimiento: ${computedKgPerHa.toLocaleString('es-AR')} kg/ha`;
@@ -3160,14 +3203,14 @@ export class AgronomyHandler {
           // Non-critical: swallow errors so the main harvest message still goes through
         }
 
-        if (!yieldKg && !computedKgPerHa) {
+        if (!yieldKg && !computedKgPerHa && !inBulk) {
           harvestMsg += `\n\n💡 _¿Ya sabés cuánto rindió? Decime "rindió 8.000 kg/ha" o "sacamos 120 tn" — o pasame las cargas por camión (chofer y kilos)._`;
         }
         {
           const extras = await this.buildHarvestExtras(userId, harvestPcId, plotResult, crop, null);
           if (extras.lines.length > 0) harvestMsg += `\n\n${extras.lines.join('\n')}`;
         }
-        harvestMsg += `\n\n🏁 _La campaña sigue abierta. Cuando termines de cargar, decime *cerrar campaña*._`;
+        if (!inBulk && !onlyYield) harvestMsg += `\n\n🏁 _La campaña sigue abierta. Cuando termines de cargar, decime *cerrar campaña*._`;
         const messages = [harvestMsg];
 
         // If quantity provided, suggest loading grain to stock/silo. Same

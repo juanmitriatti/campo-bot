@@ -108,10 +108,10 @@ export class InteractiveRouter {
       try {
         const resolved = callbackPayloadStore.get(rainTokMatch[1]);
         if (resolved === null) throw new Error('token vencido o ajeno');
-        const p = JSON.parse(resolved) as { mm: number; eventDate: string | null; fields: string[] };
+        const p = JSON.parse(resolved) as { mm: number; eventDate: string | null; fields: string[]; another?: boolean };
         const fieldName = p.fields?.[Number(rainTokMatch[2])];
         if (fieldName && Number(p.mm) > 0) {
-          return { type: 'command', data: { command: 'log_rainfall', fieldName, mm: Number(p.mm), eventDate: p.eventDate ?? undefined } as never };
+          return { type: 'command', data: { command: 'log_rainfall', fieldName, mm: Number(p.mm), eventDate: p.eventDate ?? undefined, ...(p.another ? { __rainConfirmed: true } : {}) } as never };
         }
       } catch {
         console.log(`[INTERCEPT] rainfld sin token vigente: ${callbackId.slice(0, 40)}`);
