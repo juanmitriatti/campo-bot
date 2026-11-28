@@ -2757,8 +2757,13 @@ async function splitYieldByArea(plots: PlotRef[], totalKg: number): Promise<{ kg
     assigned += share;
     kg.set(p.id, share);
   });
-  const lines = plots.map((p) => `• ${p.name}: ${fmtTn(kg.get(p.id)!)} tn (${ha.get(p.id)!.toLocaleString('es-AR')} ha)`).join('\n');
-  return { kg, note: `📊 Repartí las *${fmtTn(totalKg)} tn* entre los ${plots.length} lotes según su superficie:\n${lines}` };
+  const perHa = (k: number, h: number) => Math.round(k / h).toLocaleString('es-AR');
+  const lines = plots.map((p) => `• ${p.name}: ${fmtTn(kg.get(p.id)!)} tn · ${ha.get(p.id)!.toLocaleString('es-AR')} ha · ${perHa(kg.get(p.id)!, ha.get(p.id)!)} kg/ha`).join('\n');
+  // Una sola tabla con el total: el reparto es una estimación y se dice.
+  return {
+    kg,
+    note: `📊 Repartí las *${fmtTn(totalKg)} tn* entre los ${plots.length} lotes según su superficie:\n${lines}\n*Total:* ${fmtTn(totalKg)} tn · ${totalHa.toLocaleString('es-AR')} ha · ${perHa(totalKg, totalHa)} kg/ha\n\n_Es un reparto proporcional, no el rinde medido de cada lote. Si sabés el de alguno, decímelo y lo corrijo._`,
+  };
 }
 
 /**
@@ -2911,7 +2916,15 @@ async function answerPendingWithSeveralPlots(
   const executor = new CompoundExecutor(domainRouter, financialHandler);
   const result = await executor.execute(built.results, ctx.userId, ctx.user, ctx.settings, text);
   const items: BotResponseItem[] = result ? await compoundResultItems(result, ctx.userId, ctx.phone) : [{ type: 'text', text: 'No pude registrarlo en esos lotes. Probá de nuevo.' }];
-  if (result && built.note) items.unshift({ type: 'text', text: built.note });
+  if (result && built.note) {
+    // La tabla del reparto ya dice el rinde de cada lote: no se repite un
+    // "Rinde cargado" por lote.
+    for (let i = items.length - 1; i >= 0; i--) {
+      const it = items[i] as { type: string; text?: string };
+      if (it.type === 'text' && it.text?.startsWith('📊 *Rinde cargado*')) items.splice(i, 1);
+    }
+    items.unshift({ type: 'text', text: built.note });
+  }
   await carryQueueForward(ctx, pendingAct.nextInQueue, items, 'respuesta con varios lotes');
   return items;
 }

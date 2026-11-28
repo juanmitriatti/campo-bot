@@ -1562,6 +1562,9 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
       expect(h.fakeAgent.calls.length).toBe(calls);
       // (100 tn: con un techo de rinde por cultivo, 500 tn en 40 ha ya serían 12.500 kg/ha)
       expect(r).toMatch(/Repartí las \*100 tn\*/);
+      // Una sola tabla con el total; no se repite "Cosecha registrada" ni un mensaje por lote.
+      expect(r).toMatch(/\*Total:\* 100 tn · 40 ha · 2\.500 kg\/ha/);
+      expect(r).not.toMatch(/Cosecha registrada|Rinde cargado/);
       // El Uno tiene 20 ha y los otros 10: 50 / 25 / 25.
       expect(await yields()).toEqual(['El Dos:25000', 'El Tres:25000', 'El Uno:50000']);
       expect(await harvestEvents()).toBe(3);
