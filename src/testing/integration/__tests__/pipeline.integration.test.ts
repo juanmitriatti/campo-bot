@@ -6095,5 +6095,38 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
       expect(h.allText(await h.tap('cancel_pending'))).toMatch(/Gasto cancelado: no se guardó/);
       expect(h.allText(await h.tap('cancel_action'))).toMatch(/No había nada pendiente/);
     });
+    it('paso 2: la categoría ESCRITA contesta el selector (no va al agente) y respeta la confirmación', async () => {
+      const { callbackPayloadStore, runWithCallbackOwner } = await import('../../../middleware/callback-payload-store.js');
+      const { encodePendingExpensePayload } = await import('../../../domain/financial/financial.handler.js');
+      const { pendingCategoryStore } = await import('../../../services/message-pipeline.js');
+      const token = runWithCallbackOwner(h.userId, () => callbackPayloadStore.set(encodePendingExpensePayload({
+        data: { type: 'expense', amount: 120000, currency: 'ARS', description: 'contador', category: '' } as never,
+        fieldId, plotId: null,
+      })));
+      pendingCategoryStore.set(h.phone, { kind: 'exp', token });
+      const calls = h.fakeAgent.calls.length;
+      const card = await h.send('Honorarios');
+      expect(h.fakeAgent.calls.length).toBe(calls); // sin agente
+      expect(h.allText(card)).toMatch(/¿Confirmo gasto\?[\s\S]*Honorarios[\s\S]*120\.000/);
+      expect(await h.q(`SELECT 1 FROM expenses WHERE user_id = $1 AND amount = 120000`, [h.userId])).toHaveLength(0);
+      await h.tap(h.allButtons(card).find(b => b.title === 'Confirmar')!.id);
+      const saved = await h.q(`SELECT category FROM expenses WHERE user_id = $1 AND amount = 120000 AND deleted_at IS NULL`, [h.userId]);
+      expect(saved.map(r => r.category)).toEqual(['Honorarios']);
+      await h.q(`DELETE FROM expenses WHERE user_id = $1`, [h.userId]);
+    });
+
+    it('paso 2: con el selector de categoría abierto, otro tema no se toma como categoría', async () => {
+      const { callbackPayloadStore, runWithCallbackOwner } = await import('../../../middleware/callback-payload-store.js');
+      const { encodePendingExpensePayload } = await import('../../../domain/financial/financial.handler.js');
+      const { pendingCategoryStore } = await import('../../../services/message-pipeline.js');
+      const token = runWithCallbackOwner(h.userId, () => callbackPayloadStore.set(encodePendingExpensePayload({
+        data: { type: 'expense', amount: 9900, currency: 'ARS', description: 'x', category: '' } as never, fieldId, plotId: null,
+      })));
+      pendingCategoryStore.set(h.phone, { kind: 'exp', token });
+      const out = h.allText(await h.send('mis campos'));
+      expect(out).toMatch(/La Esperanza/);
+      expect(await h.q(`SELECT 1 FROM user_categories WHERE user_id = $1 AND name ILIKE 'mis campos'`, [h.userId])).toHaveLength(0);
+      expect(pendingCategoryStore.get(h.phone)).toBeFalsy();
+    });
   });
 });

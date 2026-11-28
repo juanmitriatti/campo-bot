@@ -114,6 +114,14 @@ export async function appendFormOffer(
     });
   };
 
+  // Ya contestó una pregunta de esta operación por chat: se sigue por chat.
+  // Mandarle otro formulario (con lo mismo) lo hacía empezar de nuevo.
+  const pendingData = response.sideEffects?.setPendingActivity?.data as Record<string, unknown> | undefined;
+  if (!offer.explicit && pendingData?.__answeredByChat) {
+    console.log(`[FORM] offer implícita omitida (el usuario viene contestando por chat) action=${offer.action}`);
+    return;
+  }
+
   if (ctx.channel === 'whatsapp') {
     const provider = await resolveWhatsAppFormProvider(def);
     if (provider.kind === 'meta_flow') {

@@ -191,6 +191,9 @@ export { pendingCampaignCloseStore };
 // rebotó por no tener campos/lotes se guarda acá y se re-inyecta solo cuando
 // el usuario termina de crear campo+lote (ver wrapper de processTextMessage).
 export const deferredFirstActionStore = new TypedPendingStore<{ originalText: string }>('deferred_first_action');
+// "¿En qué categoría va?" abierta: si el usuario ESCRIBE la categoría en vez
+// de tocar el botón, se toma como respuesta (antes iba al agente sin contexto).
+export const pendingCategoryStore = new TypedPendingStore<{ kind: 'exp' | 'inc'; token: string }>('category_pick');
 // Gasto/ingreso de un flujo que el usuario dejó a medias: borrador de 24 h.
 export const flowDraftStore = new TypedPendingStore<{ id: string; ctx: any }>('flow_draft', 24 * 60 * 60 * 1000);
 // Confirmación de borrado de campo/lote: el botón "Confirmar" lleva el NOMBRE
@@ -227,6 +230,7 @@ export async function hydratePendingStores(phone: string): Promise<void> {
     pendingCampaignCloseStore.hydrate(phone),
     deferredFirstActionStore.hydrate(phone),
     flowDraftStore.hydrate(phone),
+    pendingCategoryStore.hydrate(phone),
     pendingDeleteConfirmStore.hydrate(phone),
     conversationLockStore.hydrate(phone),
     formConversationStore.hydrate(phone),
@@ -917,6 +921,21 @@ async function finishCards(items: BotResponseItem[], phone: string): Promise<Bot
       pendingStore.touch(phone);
     }
   }
+  // ¿Salió un selector de categoría en este turno? Queda esperando la respuesta
+  // escrita. Si el turno no lo mostró, la pregunta deja de esperar texto (los
+  // botones siguen sirviendo).
+  let categoryAsked: { kind: 'exp' | 'inc'; token: string } | null = null;
+  for (const item of out) {
+    const ids = [
+      ...(item.interactive?.buttons ?? []).map(b => b.id),
+      ...((item.interactive as { sections?: Array<{ rows: Array<{ id: string }> }> } | undefined)?.sections ?? []).flatMap(sec => sec.rows.map(r => r.id)),
+    ];
+    const hit = ids.map(id => id.match(/^cat_pick_(exp|inc)_([A-Za-z0-9_-]{8})_/)).find(Boolean);
+    if (hit) categoryAsked = { kind: hit[1] as 'exp' | 'inc', token: hit[2] };
+  }
+  if (categoryAsked) pendingCategoryStore.set(phone, categoryAsked);
+  else if (pendingCategoryStore.get(phone)) pendingCategoryStore.clear(phone);
+
   // Si en este turno salió la tarjeta actual (re-mostrada), sigue esperando respuesta.
   if (out.some(i => i.interactive?.type === 'buttons' && (i.interactive.buttons ?? []).some(b => b.id === 'confirm_pending' || b.id === 'confirm_pending' + pendingStore.buttonSuffix(phone)))) {
     pendingStore.touch(phone);
@@ -1212,6 +1231,30 @@ async function processTextMessageInner(
     if (expired) {
       conversationLogger.log(userId, phone, text, expired[0].text ?? null, 'trial_expired', null, null, null, false, Date.now() - startTime, false, 0, null, null, ctx.channel).catch(() => {});
       return expired;
+    }
+  }
+
+  // --- "¿En qué categoría va?" contestada por TEXTO ---
+  {
+    const catQ = pendingCategoryStore.get(phone);
+    const payload = catQ ? callbackPayloadStore.get(catQ.token) : null;
+    const answer = text.trim();
+    if (catQ && payload && isCancelIntent(answer)) {
+      pendingCategoryStore.clear(phone);
+      console.log(`[INTERCEPT] cancelar con el selector de categoría abierto: user=${userId}`);
+      return [{ type: 'text', text: `❌ Cancelado: el ${catQ.kind === 'inc' ? 'ingreso' : 'gasto'} no se guardó.` }];
+    }
+    if (catQ && payload && answer.length <= 40 && answer.split(/\s+/).length <= 4 && !/\d/.test(answer)
+        && !looksLikeNewActionOrQuery(answer) && !isSmallTalk(answer) && !intentClassifier.parseCommandOnly(answer)) {
+      pendingCategoryStore.clear(phone);
+      const kind = catQ.kind === 'inc' ? 'income' : 'expense';
+      const { CategoryRepository } = await import('../domain/financial/category.repository.js');
+      const existing = await new CategoryRepository().findByName(userId as number, kind, answer);
+      console.log(`[INTERCEPT] categoría escrita «${answer}» contesta el selector (${existing ? 'existente' : 'nueva'}) user=${userId}`);
+      if (existing) return handleInteractiveReplyInner(`cat_pick_${catQ.kind}_${catQ.token}_${existing.id}`, ctx);
+      const response = await financialHandler.resumeCreateCategory(userId, answer, { kind, payload });
+      applySideEffects(response.sideEffects, phone);
+      return collectResponse(response);
     }
   }
 
@@ -1862,6 +1905,9 @@ ${ask}` }];
         // currency) rather than re-merging from the stale pending.data.
         pendingActStore.clear(phone);
         const merged = { ...result.finalData } as ParsedCommand;
+        // El usuario eligió contestar por chat: lo que falte se le sigue
+        // preguntando por chat, sin mandarle otro formulario.
+        (merged as Record<string, unknown>).__answeredByChat = true;
         delete (merged as Record<string, unknown>)._needs;
         // Carry the pending's command into merged so routeCommand can dispatch.
         // Partial intents (income_partial / expense_partial) never put a

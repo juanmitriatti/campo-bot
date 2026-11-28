@@ -193,6 +193,21 @@ describe('appendFormOffer', () => {
     expect(items.some(i => (i as { interactive?: { type?: string } }).interactive?.type === 'flow')).toBe(false);
   });
 
+  it('si el usuario ya contestó por chat, la oferta implícita no manda otro formulario', async () => {
+    getSettingMock.mockImplementation(async (k: string) =>
+      k === 'WHATSAPP_FLOW_ID_SOW' ? 'flow_sow_123' : k === 'WHATSAPP_FORM_PROVIDER' ? 'meta_flow' : null);
+    const items: unknown[] = [];
+    await appendFormOffer(items as never, {
+      messages: ['¿En qué lote?'],
+      sideEffects: {
+        offerForm: { action: 'sow_crop', prefill: { crop: 'soja' } },
+        setPendingActivity: { command: 'sow_crop', data: { crop: 'soja', __answeredByChat: true }, missing: ['plot'] },
+      },
+    } as never, waCtx);
+    expect(items).toHaveLength(0);
+    expect(createMock).not.toHaveBeenCalled();
+  });
+
   it('resumeForm → retoma el formulario conversacional', async () => {
     const items: unknown[] = [];
     await appendFormOffer(items as never, {
