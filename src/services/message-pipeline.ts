@@ -520,6 +520,10 @@ async function askDestructiveConfirmation(original: ParsedCommand, userId: UserI
     return [{ type: 'text', text: target.message }];
   }
   const preview = target.status === 'found' ? target.line : '';
+  // Si se sabe QUÉ es (una siembra, una fumigación), la pregunta lo nombra.
+  const question = target.status === 'found' && target.what
+    ? `¿Confirmás eliminar ${target.what}?`
+    : `¿Seguro que querés ${label}?`;
   // Gasto e ingreso se borran en forma lógica: se ofrece «Deshacer» después.
   const undoable = target.status === 'found' && /^(Gasto|Ingreso):/.test(target.key);
   (cmd as Record<string, unknown>)._targetKey = target.status === 'found' ? target.key : null;
@@ -531,7 +535,7 @@ async function askDestructiveConfirmation(original: ParsedCommand, userId: UserI
     _destructiveCommand: cmd,
   } as any);
   return [interactiveButtons(
-    `¿Seguro que querés ${label}?${preview ? `\n\n${preview}` : ''}${undoable || cmd.command === 'revert_livestock_movement' ? '' : '\nEsto no se puede deshacer.'}`,
+    `${question}${preview ? `\n\n${preview}` : ''}${undoable || cmd.command === 'revert_livestock_movement' ? '' : '\nEsto no se puede deshacer.'}`,
     [
       { id: `confirm_destructive_${cmd.command}`, title: 'Confirmar' },
       { id: 'cancel_destructive', title: 'Cancelar' },

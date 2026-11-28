@@ -338,7 +338,7 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
       h.fakeAgent.enqueueTool('delete_last_activity', {});
       const ask = await h.send('borrá la última actividad');
       const text = h.allText(ask);
-      expect(text).toMatch(/Seguro que querés eliminar la última actividad/i);
+      expect(text).toMatch(/¿Confirmás eliminar esta fumigación\?/i);
       expect(text).toMatch(/🗑️ Fumigación/i); // preview del objetivo, con la etiqueta en castellano
       // NO borró todavía
       let acts = await h.q(`SELECT COUNT(*)::int AS n FROM domain_events WHERE user_id = $1`, [h.userId]);
@@ -6153,6 +6153,22 @@ describe.skipIf(!dbAvailable)('pipeline integration (FakeAgent, sin API)', () =>
       expect(await heads()).toEqual([20]);
       expect(await spent()).toEqual([18000]);
     });
+    it('borrar una tanda de siembra: la pregunta la nombra y dice con cuánto queda la campaña', async () => {
+      await h.q(`DELETE FROM domain_events WHERE user_id = $1`, [h.userId]);
+      await h.q(`DELETE FROM plot_crops WHERE plot_id IN (SELECT id FROM plots WHERE field_id = $1)`, [fieldId]);
+      h.fakeAgent.enqueueTool('sow_crop', { crop: 'soja', plot: 'Sur', hectares: 30 });
+      await h.send('sembré 30 ha de soja en el Sur');
+      h.fakeAgent.enqueueTool('sow_crop', { crop: 'soja', plot: 'Sur', hectares: 40 });
+      await h.send('sembré otras 40 ha de soja en el Sur');
+      h.fakeAgent.enqueueTool('delete_last_activity', {});
+      const text = h.allText(await h.send('borrá la última siembra'));
+      expect(text).toMatch(/¿Confirmás eliminar esta siembra\?/);
+      expect(text).toMatch(/solo esa tanda \(40 ha\)\. La campaña queda con \*30 ha\* sembradas/);
+      await h.send('cancelar');
+      await h.q(`DELETE FROM domain_events WHERE user_id = $1`, [h.userId]);
+      await h.q(`DELETE FROM plot_crops WHERE plot_id IN (SELECT id FROM plots WHERE field_id = $1)`, [fieldId]);
+    });
+
     it('la misma lluvia mandada dos veces no se suma sola: se pregunta', async () => {
       await h.q(`DELETE FROM rainfall WHERE user_id = $1`, [h.userId]);
       const total = async () => (await h.q(`SELECT COALESCE(SUM(millimeters), 0)::float AS mm FROM rainfall WHERE user_id = $1`, [h.userId]))[0].mm;

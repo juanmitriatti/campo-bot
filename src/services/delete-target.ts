@@ -16,7 +16,8 @@ import type { ParsedCommand, UserId } from '../types/index.js';
 
 export type DeleteTarget =
   /** Hay un registro concreto: se muestra y su `key` se vuelve a comparar al confirmar. */
-  | { status: 'found'; key: string; line: string }
+  /** `what`: cómo nombrar lo que se borra en la pregunta ("esta siembra"). Sin él, el rótulo genérico del comando. */
+  | { status: 'found'; key: string; line: string; what?: string }
   /** La búsqueda no encontró nada: no se pide confirmación. */
   | { status: 'none'; message: string }
   /** Comando sin vista previa (o sin criterios): confirmación genérica. */
@@ -96,7 +97,11 @@ export async function resolveDeleteTarget(cmd: ParsedCommand, userId: UserId): P
       const { findActivityDeleteTarget } = await import('../domain/agronomy/agronomy.handler.js');
       const ev = await findActivityDeleteTarget(userId, cmd);
       if (!ev) return none('No hay actividades para borrar con esos datos.');
-      return { status: 'found', key: `event:${ev.id}`, line: await activityLine(ev as unknown as Record<string, unknown>) };
+      return {
+        status: 'found', key: `event:${ev.id}`,
+        line: await activityLine(ev as unknown as Record<string, unknown>),
+        what: ACTIVITY_NOUN[String(ev.event_type)]?.what,
+      };
     }
     case 'delete_last_observation': {
       const row = await getLastObservation(userId);
@@ -164,21 +169,34 @@ export async function resolveDeleteTarget(cmd: ParsedCommand, userId: UserId): P
   }
 }
 
+/** Nombre de cada tipo de actividad: el de la ficha y el de la pregunta. Fuente única. */
+const ACTIVITY_NOUN: Record<string, { label: string; what: string }> = {
+  planting: { label: 'Siembra', what: 'esta siembra' },
+  spraying: { label: 'Fumigación', what: 'esta fumigación' },
+  fertilization: { label: 'Fertilización', what: 'esta fertilización' },
+  harvest: { label: 'Cosecha', what: 'esta cosecha' },
+  tillage: { label: 'Labranza', what: 'esta labranza' },
+  irrigation: { label: 'Riego', what: 'este riego' },
+  health_event: { label: 'Evento sanitario', what: 'este evento sanitario' },
+  repro_event: { label: 'Evento reproductivo', what: 'este evento reproductivo' },
+  weighing: { label: 'Pesaje', what: 'este pesaje' },
+  tacto: { label: 'Tacto', what: 'este tacto' },
+};
+
 async function activityLine(ev: Record<string, unknown>): Promise<string> {
-  const labels: Record<string, string> = {
-    planting: 'Siembra', spraying: 'Fumigación', fertilization: 'Fertilización', harvest: 'Cosecha',
-    tillage: 'Labranza', irrigation: 'Riego', health_event: 'Evento sanitario',
-    repro_event: 'Evento reproductivo', weighing: 'Pesaje', tacto: 'Tacto',
-  };
-  let line = `🗑️ ${labels[String(ev.event_type)] ?? ev.event_type}${ev.crop ? ` de ${ev.crop}` : ''}${ev.plot_name ? ` en ${ev.plot_name}` : ''}${day(ev.event_date ?? ev.created_at)}`;
+  let line = `🗑️ ${ACTIVITY_NOUN[String(ev.event_type)]?.label ?? ev.event_type}${ev.crop ? ` de ${ev.crop}` : ''}${ev.plot_name ? ` en ${ev.plot_name}` : ''}${day(ev.event_date ?? ev.created_at)}`;
   if (ev.event_type === 'planting' && ev.plot_crop_id) {
     const { rows } = await pool.query(
       `SELECT COUNT(*)::int AS n FROM domain_events
         WHERE plot_crop_id = $1 AND event_type = 'planting' AND deleted_at IS NULL AND id <> $2`,
       [ev.plot_crop_id, ev.id]);
     if (rows[0]?.n > 0) {
-      const ha = ev.unit === 'ha' && ev.quantity != null ? ` (${Number(ev.quantity).toLocaleString('es-AR')} ha)` : '';
-      line += `\n_Se borra solo esa tanda${ha}; la campaña sigue con las otras._`;
+      const tandaHa = ev.unit === 'ha' && ev.quantity != null ? Number(ev.quantity) : null;
+      const ha = tandaHa != null ? ` (${tandaHa.toLocaleString('es-AR')} ha)` : '';
+      // Con cuánto queda la campaña: el resultado se ve ANTES de confirmar.
+      const { rows: camp } = await pool.query(`SELECT sowed_hectares::float AS ha FROM plot_crops WHERE id = $1`, [ev.plot_crop_id]);
+      const left = tandaHa != null && camp[0]?.ha != null ? Math.max(0, Number(camp[0].ha) - tandaHa) : null;
+      line += `\n_Se borra solo esa tanda${ha}. ${left != null ? `La campaña queda con *${left.toLocaleString('es-AR')} ha* sembradas` : 'La campaña sigue con las otras'} y sigue activa._`;
     }
   }
   if (ev.event_type !== 'harvest') return line;
