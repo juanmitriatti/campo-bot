@@ -68,7 +68,7 @@ import { LearningService } from '../domain/learning/learning.service.js';
 import { ContextResolver } from '../domain/learning/context-resolver.js';
 import { FeatureGate } from '../domain/billing/feature-gate.js';
 import { getSetting, getSettingNumber, getSettingBool } from './settings.service.js';
-import { pool } from '../config/db.js';
+import { pool, withTransaction } from '../config/db.js';
 import { ConversationStateRepository } from '../middleware/conversation-state.repository.js';
 import { ConversationEngine, buildTimeoutMessage, isOtherItemCorrectionOrDelete } from '../middleware/conversation-engine.js';
 import { ConversationLogger, runConversationTurn, currentTurn } from '../middleware/conversation-logger.js';
@@ -592,13 +592,43 @@ async function undoDelete(token: string, userId: UserId): Promise<BotResponseIte
   const payload = raw ? JSON.parse(raw) as { kind?: string; id?: number } : null;
   if (!payload?.id) return [STALE_BUTTON_ITEM];
   const table = payload.kind === 'Ingreso' ? 'incomes' : 'expenses';
-  const { rowCount } = await pool.query(
-    `UPDATE ${table} SET deleted_at = NULL WHERE id = $1 AND user_id = $2 AND deleted_at IS NOT NULL`,
-    [payload.id, userId],
-  );
   const noun = table === 'incomes' ? 'ingreso' : 'gasto';
-  console.log(`[INTERCEPT] deshacer borrado de ${noun} ${payload.id}: ${rowCount ? 'restaurado' : 'ya estaba'}`);
-  return [{ type: 'text', text: rowCount ? `↩️ Listo, recuperé el ${noun}.` : `Ese ${noun} ya estaba recuperado.` }];
+  // Se recupera y se revisa que siga teniendo dónde estar: si el lote o el
+  // campo se borraron mientras tanto, el registro vuelve sin esa ubicación y se
+  // dice (antes volvía apuntando a un lote que ya no existía).
+  const restored = await withTransaction(async () => {
+    const { rows } = await pool.query(
+      `UPDATE ${table} SET deleted_at = NULL WHERE id = $1 AND user_id = $2 AND deleted_at IS NOT NULL
+       RETURNING id, amount::float AS amount, currency, category, plot_id, field_id`,
+      [payload.id, userId],
+    );
+    const row = rows[0] as { id: number; amount: number; currency: string; category: string | null; plot_id: number | null; field_id: number | null } | undefined;
+    if (!row) return null;
+    const { rows: loc } = await pool.query(
+      `SELECT (SELECT name FROM plots WHERE id = $1 AND deleted_at IS NOT NULL) AS gone_plot,
+              (SELECT name FROM fields WHERE id = $2 AND deleted_at IS NOT NULL) AS gone_field`,
+      [row.plot_id, row.field_id],
+    );
+    const gone = loc[0] as { gone_plot: string | null; gone_field: string | null };
+    if (gone.gone_plot || gone.gone_field) {
+      await pool.query(
+        `UPDATE ${table} SET plot_id = CASE WHEN $2 THEN NULL ELSE plot_id END,
+                              field_id = CASE WHEN $3 THEN NULL ELSE field_id END WHERE id = $1`,
+        [row.id, !!gone.gone_plot || !!gone.gone_field, !!gone.gone_field],
+      );
+    }
+    return { row, gone };
+  });
+  console.log(`[INTERCEPT] deshacer borrado de ${noun} ${payload.id}: ${restored ? 'restaurado' : 'ya estaba'}`);
+  if (!restored) return [{ type: 'text', text: `Ese ${noun} ya estaba recuperado. No cambié nada.` }];
+  const { row, gone } = restored;
+  const money = `${row.currency === 'USD' ? 'US$ ' : '$'}${row.amount.toLocaleString('es-AR')}`;
+  const lost = gone.gone_field ? `el campo *${gone.gone_field}*` : gone.gone_plot ? `el lote *${gone.gone_plot}*` : null;
+  return [{
+    type: 'text',
+    text: `↩️ Listo, recuperé el ${noun}: *${row.category ?? 'Sin categoría'}* · ${money}.`
+      + (lost ? `\n⚠️ Mientras tanto se borró ${lost}: el ${noun} quedó sin esa ubicación. Decime dónde va si querés asignarlo.` : ''),
+  }];
 }
 
 export function isCancelIntent(text: string): boolean {

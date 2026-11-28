@@ -79,6 +79,30 @@ describe.skipIf(!dbAvailable)('borrados con vista previa', () => {
     expect(await live('expenses')).toEqual([]);
   });
 
+  it('«Deshacer» con el lote borrado mientras tanto: vuelve sin ese lote y lo dice', async () => {
+    const f = await h.q(`INSERT INTO fields (user_id, name) VALUES ($1, 'El Paso') RETURNING id`, [h.userId]);
+    const fid = (f[0] as { id: number }).id;
+    const p = await h.q(`INSERT INTO plots (field_id, name) VALUES ($1, 'Bajo') RETURNING id`, [fid]);
+    const pid = (p[0] as { id: number }).id;
+    await h.q(
+      `INSERT INTO expenses (user_id, amount, currency, category, expense_date, field_id, plot_id)
+       VALUES ($1, 450, 'ARS', 'Otros', CURRENT_DATE, $2, $3)`, [h.userId, fid, pid]);
+    h.fakeAgent.enqueueTool('delete_last_expense', {});
+    const items = await h.send('borrá el último gasto');
+    const done = await h.tap(h.allButtons(items)[0].id);
+    const undo = h.allButtons(done).find(b => b.title === 'Deshacer')!;
+    await h.q(`UPDATE plots SET deleted_at = NOW() WHERE id = $1`, [pid]);
+    const text = h.allText(await h.tap(undo.id));
+    expect(text).toMatch(/recuperé el gasto: \*Otros\* · \$450/);
+    expect(text).toMatch(/se borró el lote \*Bajo\*/);
+    const rows = await h.q(`SELECT plot_id, field_id FROM expenses WHERE user_id = $1 AND deleted_at IS NULL`, [h.userId]);
+    expect(rows[0].plot_id).toBeNull();
+    expect(Number(rows[0].field_id)).toBe(fid);
+    await h.q(`DELETE FROM expenses WHERE user_id = $1`, [h.userId]);
+    await h.q(`DELETE FROM plots WHERE field_id = $1`, [fid]);
+    await h.q(`DELETE FROM fields WHERE id = $1`, [fid]);
+  });
+
   it('«deshacé eso» de hacienda muestra el movimiento y no toca nada sin confirmar', async () => {
     const f = await h.q(`INSERT INTO fields (user_id, name) VALUES ($1, 'La Posta') RETURNING id`, [h.userId]);
     await h.q(`INSERT INTO plots (field_id, name) VALUES ($1, 'Uno')`, [(f[0] as { id: number }).id]);
